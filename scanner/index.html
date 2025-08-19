@@ -6,10 +6,7 @@
     <title>NFC 巡檢掃描</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 確保在行動裝置上滿版顯示 */
-        html, body {
-            height: 100%;
-        }
+        html, body { height: 100%; }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col items-center justify-center h-full font-sans p-4">
@@ -24,33 +21,26 @@
     </div>
 
     <div id="scanner-section" class="hidden w-full h-full flex flex-col items-center justify-between text-center p-4">
-        <!-- 頂部資訊區 -->
         <header class="w-full">
             <p class="text-lg">巡檢員: <span id="display-inspector-name" class="font-bold text-cyan-400"></span></p>
             <button id="change-name-button" class="text-sm text-gray-400 underline mt-1">更換姓名</button>
         </header>
 
-        <!-- 主訊息區 -->
         <main class="flex flex-col items-center justify-center flex-grow">
-            <div id="scan-result-message" class="text-center text-2xl font-bold">
+            <div id="scan-result-message" class="text-center text-2xl font-bold p-4">
                 <!-- 掃描結果將顯示於此 -->
             </div>
-            <!-- 手動掃描按鈕 (預設隱藏，僅在非 iPhone 裝置顯示) -->
-            <button id="manual-scan-button" class="hidden mt-8 w-64 h-64 bg-cyan-600 rounded-full flex items-center justify-center text-white text-4xl font-bold shadow-lg transition-transform transform active:scale-95 focus:outline-none">
-                手動掃描
-            </button>
         </main>
         
-        <!-- 底部提示區 -->
-        <footer id="footer-note" class="w-full pb-4 text-gray-500">
-            <!-- 提示文字將由 JS 動態更新 -->
+        <footer class="w-full pb-4 text-gray-500">
+            <p>靠近 NFC 標籤即可自動巡檢</p>
         </footer>
     </div>
 
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, updateDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // TODO: 請在此貼上您的 Firebase 設定物件
         const firebaseConfig = {
@@ -63,8 +53,25 @@
         };
         
         // 初始化 Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+        let app;
+        let db;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            // 開啟詳細日誌，方便從電腦瀏覽器偵錯
+            // setLogLevel('debug'); 
+        } catch (error) {
+            // 如果 Firebase 初始化失敗，直接在畫面上顯示錯誤
+            const nameSection = document.getElementById('name-input-section');
+            const scannerSection = document.getElementById('scanner-section');
+            nameSection.classList.add('hidden');
+            scannerSection.classList.remove('hidden');
+            const messageElement = document.getElementById('scan-result-message');
+            messageElement.textContent = `Firebase 初始化失敗: ${error.message}`;
+            messageElement.className = 'text-red-400 text-xl font-bold p-4';
+            console.error("Firebase 初始化失敗:", error);
+        }
+        
 
         // 獲取頁面元素
         const nameInputSection = document.getElementById('name-input-section');
@@ -73,37 +80,29 @@
         const saveNameButton = document.getElementById('save-name-button');
         const displayInspectorName = document.getElementById('display-inspector-name');
         const changeNameButton = document.getElementById('change-name-button');
-        const manualScanButton = document.getElementById('manual-scan-button');
         const scanResultMessage = document.getElementById('scan-result-message');
-        const footerNote = document.getElementById('footer-note');
 
         let inspectorName = '';
 
         /**
-         * 偵測是否為 iPhone
-         * @returns {boolean}
-         */
-        function isIphone() {
-            return /iPhone/i.test(navigator.userAgent);
-        }
-
-        /**
          * 顯示掃描結果訊息
          * @param {string} message - 要顯示的訊息
-         * @param {'success' | 'error' | 'loading'} type - 訊息類型
+         * @param {'success' | 'error' | 'loading' | 'info'} type - 訊息類型
          */
         function showScanMessage(message, type) {
             scanResultMessage.textContent = message;
             switch (type) {
                 case 'success':
-                    scanResultMessage.className = 'text-green-400 text-2xl font-bold';
+                    scanResultMessage.className = 'text-green-400 text-2xl font-bold p-4';
                     break;
                 case 'error':
-                    scanResultMessage.className = 'text-red-400 text-2xl font-bold';
+                    scanResultMessage.className = 'text-red-400 text-xl font-bold p-4';
                     break;
                 case 'loading':
-                    scanResultMessage.className = 'text-yellow-400 text-2xl font-bold';
+                    scanResultMessage.className = 'text-yellow-400 text-2xl font-bold p-4';
                     break;
+                default:
+                     scanResultMessage.className = 'text-gray-300 text-2xl font-bold p-4';
             }
         }
 
@@ -112,14 +111,23 @@
          * @param {string} pointId - 巡檢點 ID
          */
         async function updateInspectionPoint(pointId) {
-            if (!pointId || !inspectorName) {
-                console.error("缺少巡檢點 ID 或巡檢員姓名");
+            if (!db) {
+                showScanMessage('資料庫連線失敗，請檢查 Firebase 設定。', 'error');
+                return;
+            }
+            if (!pointId) {
+                showScanMessage('未從 NFC 標籤讀取到巡檢點 ID。', 'info');
+                return;
+            }
+            if (!inspectorName) {
+                showScanMessage('錯誤：找不到巡檢員姓名。', 'error');
                 return;
             }
 
             const pointRef = doc(db, 'inspectionPoints', pointId);
             try {
-                showScanMessage(`正在更新 [${pointId}]...`, 'loading');
+                showScanMessage(`[${pointId}] 正在更新...`, 'loading');
+                
                 await updateDoc(pointRef, {
                     status: 'inspected',
                     inspectorName: inspectorName,
@@ -128,46 +136,13 @@
                 
                 showScanMessage(`[${pointId}] 已巡檢成功！`, 'success');
                 if ('vibrate' in navigator) {
-                    navigator.vibrate(200); // 震動回饋
+                    navigator.vibrate(200);
                 }
             } catch (error) {
-                console.error("更新 Firestore 失敗: ", error);
-                showScanMessage(`更新失敗: ${pointId}`, 'error');
+                console.error("更新 Firestore 失敗:", error);
+                // **關鍵：將詳細錯誤訊息顯示在畫面上**
+                showScanMessage(`更新失敗！原因: ${error.code || error.message}`, 'error');
             }
-        }
-
-        /**
-         * 初始化手動 NFC 掃描功能 (僅限 Android)
-         */
-        function initManualNFC() {
-            // 如果是 iPhone 或不支援 NDEFReader，則不執行任何操作
-            if (isIphone() || !('NDEFReader' in window)) {
-                return;
-            }
-
-            // 顯示手動掃描按鈕和提示
-            manualScanButton.classList.remove('hidden');
-            footerNote.textContent = '若自動掃描失敗，可使用手動掃描';
-
-            manualScanButton.addEventListener('click', async () => {
-                try {
-                    const reader = new NDEFReader();
-                    await reader.scan();
-                    showScanMessage('準備掃描...', 'loading');
-
-                    reader.addEventListener('reading', ({ message }) => {
-                        const record = message.records[0];
-                        if (record.recordType === "text") {
-                            const textDecoder = new TextDecoder(record.encoding);
-                            const pointId = textDecoder.decode(record.data);
-                            updateInspectionPoint(pointId);
-                        }
-                    });
-                } catch (error) {
-                    console.error('啟動 NFC 掃描失敗: ', error);
-                    showScanMessage('無法啟動掃描功能', 'error');
-                }
-            });
         }
         
         /**
@@ -199,12 +174,7 @@
                 displayInspectorName.textContent = savedName;
                 nameInputSection.classList.add('hidden');
                 scannerSection.classList.remove('hidden');
-
-                if (pointIdFromUrl) {
-                    updateInspectionPoint(pointIdFromUrl);
-                } else {
-                    showScanMessage('請靠近 NFC 標籤開始巡檢', 'loading');
-                }
+                updateInspectionPoint(pointIdFromUrl);
             } else {
                 nameInputSection.classList.remove('hidden');
                 scannerSection.classList.add('hidden');
@@ -212,9 +182,7 @@
             
             saveNameButton.addEventListener('click', () => {
                 handleNameSetup(() => {
-                    if (pointIdFromUrl) {
-                        updateInspectionPoint(pointIdFromUrl);
-                    }
+                    updateInspectionPoint(pointIdFromUrl);
                 });
             });
             inspectorNameInput.addEventListener('keypress', (e) => {
@@ -225,14 +193,15 @@
 
             changeNameButton.addEventListener('click', () => {
                 localStorage.removeItem('inspectorName');
-                window.location.reload(); // 重新載入頁面以返回姓名輸入
+                window.location.reload();
             });
-
-            // 初始化手動掃描(如果適用)
-            initManualNFC();
         }
 
-        initialize();
+        // 只有在 Firebase 成功初始化後才執行主邏輯
+        if (db) {
+            initialize();
+        }
+
     </script>
 </body>
 </html>
