@@ -10,16 +10,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Noto Sans TC', sans-serif; -webkit-tap-highlight-color: transparent; }
-        /* 美化滾動條 */
         body::-webkit-scrollbar { width: 8px; }
         body::-webkit-scrollbar-track { background: #f1f5f9; }
         body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        body::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans">
 
-    <!-- **已修改**：移除了 h-screen，讓頁面可以滾動 -->
     <div class="container mx-auto p-4 max-w-lg">
         <header class="text-center mb-6 pt-4 flex-shrink-0">
             <h1 class="text-2xl font-bold text-slate-900">乙炔存放區巡檢</h1>
@@ -39,7 +36,7 @@
 
         <!-- 2. 七日內巡檢紀錄 -->
         <section class="bg-white border border-slate-200 rounded-lg shadow-sm min-h-0 mb-6">
-            <h2 class="text-lg font-semibold text-slate-800 p-5">2. 最近 7 日巡檢紀錄</h2>
+             <h2 class="text-lg font-semibold text-slate-800 p-5">2. 最近 7 日巡檢紀錄</h2>
             <div id="history-log" class="space-y-4 p-5 pt-0">
                 <p class="text-slate-400 text-center">正在載入紀錄...</p>
             </div>
@@ -47,10 +44,10 @@
         
         <!-- 3. 異常回報區 -->
         <section id="abnormal-report-section" class="bg-white p-5 rounded-lg border border-slate-200 shadow-sm mb-6 flex-shrink-0">
-            <h2 class="text-lg font-semibold mb-2 text-slate-800">3. 回報異常狀況 (有異常才需要填寫)</h2>
+            <h2 class="text-lg font-semibold mb-2 text-slate-800">3. 回報異常狀況 (選填)</h2>
              <textarea id="report-description" class="w-full mt-3 bg-slate-50 p-2 rounded-md border border-slate-300 focus:ring-2 focus:ring-yellow-500 focus:outline-none" rows="3" placeholder="若有異常，請在此描述..."></textarea>
             <input type="file" id="report-photo" accept="image/*,video/*" capture="environment" class="hidden">
-            <button id="report-photo-button" class="w-full mt-3 bg-slate-700 hover:bg-slate-800 text-white py-2 px-3 rounded-md transition-colors">拍攝異常照片/影片</button>
+            <button id="report-photo-button" class="w-full mt-3 bg-slate-700 hover:bg-slate-800 text-white py-2 px-3 rounded-md transition-colors">拍攝照片/影片存證</button>
             <img id="report-photo-preview" class="hidden w-full rounded-md my-3 border border-slate-200">
             <button id="submit-report-button" class="w-full mt-3 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-md transition-colors">提交異常回報</button>
             <p id="report-status" class="text-center mt-2 h-5"></p>
@@ -73,7 +70,6 @@
             measurementId: "G-HKPEP59T1P"
         };
         
-        // 元素獲取
         const displayName = document.getElementById('display-inspector-name');
         const photoInput = document.getElementById('photo-input');
         const takePhotoButton = document.getElementById('take-photo-button');
@@ -90,8 +86,16 @@
 
         let db, auth, inspectorName, compressedPhotoBase64 = null, compressedReportPhotoBase64 = null;
 
-        // 主邏輯
         async function main() {
+            inspectorName = localStorage.getItem('inspectorName');
+            if (!inspectorName) {
+                // **已修正**：構造相對返回路徑，避免 blob URL 問題
+                const returnTo = `acetylene.html${window.location.search}`;
+                window.location.href = `set-name.html?redirectUrl=${encodeURIComponent(returnTo)}`;
+                return;
+            }
+            displayName.textContent = inspectorName;
+
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
@@ -99,15 +103,10 @@
                 await signInAnonymously(auth);
             } catch (error) { alert(`Firebase 連線失敗: ${error.message}`); return; }
 
-            inspectorName = localStorage.getItem('inspectorName');
-            if (!inspectorName) { alert('找不到巡檢員姓名，將返回主頁。'); return; }
-            displayName.textContent = inspectorName;
-
             bindEvents();
             loadHistory();
         }
 
-        // 圖片壓縮
         function compressImage(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -131,7 +130,6 @@
             });
         }
 
-        // 事件綁定
         function bindEvents() {
             takePhotoButton.onclick = () => photoInput.click();
             photoInput.onchange = async (e) => {
@@ -147,7 +145,6 @@
             };
             uploadButton.onclick = handleUpload;
 
-            // 異常回報事件
             reportPhotoButton.onclick = () => reportPhotoInput.click();
             reportPhotoInput.onchange = async (e) => {
                 const file = e.target.files[0];
@@ -160,7 +157,6 @@
             submitReportButton.onclick = submitAbnormalReport;
         }
 
-        // 正常巡檢上傳
         async function handleUpload() {
             if (!compressedPhotoBase64) return;
             uploadButton.disabled = true;
@@ -177,7 +173,6 @@
             }
         }
         
-        // 異常回報提交
         async function submitAbnormalReport() {
             const description = reportDescription.value;
             if (!description) {
@@ -197,7 +192,6 @@
                 });
                 reportStatus.textContent = '異常回報成功！';
                 reportStatus.className = 'text-center mt-2 h-5 text-green-600';
-                // 清空表單
                 reportDescription.value = '';
                 reportPhotoPreview.classList.add('hidden');
                 compressedReportPhotoBase64 = null;
@@ -206,7 +200,6 @@
             }
         }
 
-        // 載入歷史紀錄
         async function loadHistory() {
             historyLog.innerHTML = '<p class="text-slate-400 text-center pt-10">正在載入紀錄...</p>';
             const sevenDaysAgo = new Date();
