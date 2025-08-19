@@ -42,17 +42,18 @@ const firebaseConfig = {
             try {
                 mainMessage.textContent = `正在更新 [${pointId}]...`;
                 await updateDoc(pointRef, {
-                    // 新增：將此筆紀錄存入 standard_inspection_log 集合
-                    const logCollection = collection(db, 'standard_inspection_log');
-                    await addDoc(logCollection, {
-                        pointId: pointId, // 記錄是哪個點
-                        inspectorName: inspectorName,
-                        timestamp: serverTimestamp()
-                    });
                     status: 'inspected',
                     inspectorName: inspectorName,
                     timestamp: serverTimestamp()
                 });
+                 // 新增：將此筆紀錄存入 standard_inspection_log 集合
+                const logCollection = collection(db, 'standard_inspection_log');
+                await addDoc(logCollection, {
+                    pointId: pointId, // 記錄是哪個點
+                    inspectorName: inspectorName,
+                    timestamp: serverTimestamp()
+                });
+
                 mainMessage.textContent = `[${pointId}] 已巡檢成功！`;
                 mainMessage.className = 'text-2xl text-green-400';
                 if ('vibrate' in navigator) navigator.vibrate(200);
@@ -116,4 +117,5 @@ const firebaseConfig = {
     </script>
 </body>
 </html>
+
 
