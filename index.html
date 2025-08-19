@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>廠區設備巡檢儀表板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 自定義樣式，用於卡片過渡效果 */
+        .card {
+            transition: all 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">廠區設備巡檢儀表板</h1>
+            <p class="text-gray-500 mt-2">即時監控所有巡檢點的狀態</p>
+        </header>
+
+        <div class="flex justify-end mb-6">
+            <button id="reset-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                重置所有狀態
+            </button>
+        </div>
+
+        <!-- 巡檢點卡片網格 -->
+        <div id="dashboard-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            <!-- 卡片將由 JavaScript 動態生成 -->
+            <div class="text-center p-8 col-span-full">
+                <p class="text-gray-500">正在從 Firebase 加載資料...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // 匯入 Firebase SDK 模組
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // TODO: 請在此貼上您的 Firebase 設定物件
+        // 從 Firebase 控制台 > 專案設定 > 您的應用程式 > SDK 設定和設定中取得
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // 定義所有巡檢點的資訊
+        const inspectionPoints = [
+            { id: 'crane-1', name: '天車-1' },
+            { id: 'crane-2', name: '天車-2' },
+            { id: 'crane-3', name: '天車-3' },
+            { id: 'crane-4', name: '天車-4' },
+            { id: 'crane-5', name: '天車-5' },
+            { id: 'hook-safety', name: '吊鉤安全高度' },
+            { id: 'emergency-stop', name: '急停開關' },
+            { id: 'acetylene', name: '乙炔存放區' },
+            { id: 'factory-lights', name: '工廠電燈' }
+        ];
+
+        const grid = document.getElementById('dashboard-grid');
+
+        /**
+         * 渲染所有巡檢點的卡片
+         * @param {Array} pointsData - 從 Firestore 獲取的巡檢點資料陣列
+         */
+        function renderDashboard(pointsData) {
+            grid.innerHTML = ''; // 清空現有卡片
+            
+            // 將 Firestore 的資料轉換成以 id 為 key 的物件，方便查找
+            const dataMap = pointsData.reduce((map, item) => {
+                map[item.id] = item;
+                return map;
+            }, {});
+
+            inspectionPoints.forEach(point => {
+                const data = dataMap[point.id] || {}; // 如果 Firestore 沒資料，則使用空物件
+                const status = data.status || 'pending'; // 預設狀態為 '待巡檢'
+                const inspectorName = data.inspectorName || '---';
+                
+                let timestamp = '---';
+                if (data.timestamp && data.timestamp.toDate) {
+                    // 將 Firebase Timestamp 轉換為本地時間格式
+                    timestamp = data.timestamp.toDate().toLocaleString('zh-TW', { hour12: false });
+                }
+
+                // 根據狀態決定卡片的顏色
+                const bgColor = status === 'inspected' ? 'bg-green-100 border-green-500' : 'bg-red-100 border-red-500';
+                const statusTextColor = status === 'inspected' ? 'text-green-700' : 'text-red-700';
+                const statusText = status === 'inspected' ? '已巡檢' : '待巡檢';
+
+                const cardHTML = `
+                    <div class="card ${bgColor} border-l-4 rounded-lg shadow-md p-5 flex flex-col justify-between">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-800 mb-2">${point.name}</h2>
+                            <div class="flex items-center mb-4">
+                                <span class="font-semibold ${statusTextColor} px-3 py-1 rounded-full text-sm ${bgColor.replace('100', '200')}">${statusText}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-600">巡檢員: <span class="font-medium text-gray-900">${inspectorName}</span></p>
+                            <p class="text-sm text-gray-600">時間: <span class="font-medium text-gray-900">${timestamp}</span></p>
+                        </div>
+                    </div>
+                `;
+                grid.insertAdjacentHTML('beforeend', cardHTML);
+            });
+        }
+
+        /**
+         * 監聽 Firestore 資料變動
+         */
+        function listenForUpdates() {
+            const pointsCollection = collection(db, 'inspectionPoints');
+            onSnapshot(pointsCollection, (snapshot) => {
+                const pointsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderDashboard(pointsData);
+            });
+        }
+
+        /**
+         * 重置所有巡檢點的狀態
+         */
+        async function resetAllStatus() {
+            // 彈出確認對話框
+            const isConfirmed = confirm('您確定要重置所有巡檢點的狀態嗎？此操作無法復原。');
+            if (!isConfirmed) {
+                return;
+            }
+
+            console.log('開始重置所有狀態...');
+            try {
+                // 使用 WriteBatch 進行批次更新，效率更高
+                const batch = writeBatch(db);
+                
+                inspectionPoints.forEach(point => {
+                    const pointRef = doc(db, 'inspectionPoints', point.id);
+                    // 將狀態重置為 'pending'，並清除巡檢員和時間
+                    batch.set(pointRef, {
+                        name: point.name,
+                        status: 'pending',
+                        inspectorName: null,
+                        timestamp: null
+                    });
+                });
+
+                await batch.commit();
+                alert('所有巡檢點狀態已成功重置！');
+            } catch (error) {
+                console.error("重置狀態時發生錯誤: ", error);
+                alert('重置失敗，請檢查控制台錯誤訊息。');
+            }
+        }
+
+        // 綁定重置按鈕的點擊事件
+        document.getElementById('reset-button').addEventListener('click', resetAllStatus);
+
+        // 頁面載入後開始監聽資料庫
+        listenForUpdates();
+
+    </script>
+</body>
+</html>
