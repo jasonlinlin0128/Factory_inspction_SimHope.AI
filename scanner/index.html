@@ -7,193 +7,126 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html, body { height: 100%; }
+        .loader {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            position: relative;
+            animation: rotate 1s linear infinite;
+        }
+        .loader::before, .loader::after {
+            content: "";
+            box-sizing: border-box;
+            position: absolute;
+            inset: 0px;
+            border-radius: 50%;
+            border: 5px solid #FFF;
+            animation: prixClipFix 2s linear infinite;
+        }
+        .loader::after {
+            border-color: #3b82f6;
+            animation: prixClipFix 2s linear infinite, rotate 0.5s linear infinite reverse;
+            inset: 6px;
+        }
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes prixClipFix {
+            0% { clip-path: polygon(50% 50%, 0 0, 0 0, 0 0, 0 0, 0 0); }
+            25% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 0, 100% 0, 100% 0); }
+            50% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 100% 100%, 100% 100%); }
+            75% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 100%); }
+            100% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 0); }
+        }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center justify-center h-full font-sans p-4">
+<body class="bg-black text-white flex flex-col items-center justify-center h-full font-sans p-4">
 
-    <div id="name-input-section" class="w-full max-w-sm text-center">
-        <h1 class="text-3xl font-bold mb-4">巡檢員簽名</h1>
-        <p class="text-gray-400 mb-6">請輸入您的姓名或工號</p>
-        <input type="text" id="inspector-name-input" class="w-full bg-gray-800 border-2 border-gray-600 rounded-lg px-4 py-3 text-white text-center text-lg focus:outline-none focus:border-cyan-500" placeholder="例如：王大明">
-        <button id="save-name-button" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg mt-4 transition-colors">
-            確認姓名
-        </button>
-    </div>
-
-    <div id="scanner-section" class="hidden w-full h-full flex flex-col items-center justify-between text-center p-4">
-        <header class="w-full">
-            <p class="text-lg">巡檢員: <span id="display-inspector-name" class="font-bold text-cyan-400"></span></p>
-            <button id="change-name-button" class="text-sm text-gray-400 underline mt-1">更換姓名</button>
-        </header>
-
-        <main class="flex flex-col items-center justify-center flex-grow">
-            <div id="scan-result-message" class="text-center text-2xl font-bold p-4">
-                <!-- 掃描結果將顯示於此 -->
-            </div>
-        </main>
-        
-        <footer class="w-full pb-4 text-gray-500">
-            <p>靠近 NFC 標籤即可自動巡檢</p>
-        </footer>
+    <div id="message-container" class="text-center flex flex-col items-center space-y-6">
+        <div class="loader"></div>
+        <p id="main-message" class="text-xl text-gray-300">正在處理巡檢點...</p>
     </div>
 
     <!-- Firebase SDK -->
     <script type="module">
-        // 匯入 Firebase 所有需要的模組，包含 Auth
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, updateDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-        // TODO: 請在此貼上您的 Firebase 設定物件
-const firebaseConfig = {
-  apiKey: "AIzaSyCux2MYcB_BgeCxTIu_gGzezkqYZFHO8RQ",
-  authDomain: "factory-inspction-simhope-ai.firebaseapp.com",
-  projectId: "factory-inspction-simhope-ai",
-  storageBucket: "factory-inspction-simhope-ai.firebasestorage.app",
-  messagingSenderId: "386322024576",
-  appId: "1:386322024576:web:fdb68ed57b162987487e65",
-  measurementId: "G-HKPEP59T1P"
-};
+        const firebaseConfig = {
+            apiKey: "AIzaSyCux2MYcB_BgeCxTIu_gGzezkqYZFHO8RQ",
+            authDomain: "factory-inspction-simhope-ai.firebaseapp.com",
+            projectId: "factory-inspction-simhope-ai",
+            storageBucket: "factory-inspction-simhope-ai.appspot.com",
+            messagingSenderId: "386322024576",
+            appId: "1:386322024576:web:fdb68ed57b162987487e65",
+            measurementId: "G-HKPEP59T1P"
+        };
         
-        // 獲取頁面元素
-        const nameInputSection = document.getElementById('name-input-section');
-        const scannerSection = document.getElementById('scanner-section');
-        const inspectorNameInput = document.getElementById('inspector-name-input');
-        const saveNameButton = document.getElementById('save-name-button');
-        const displayInspectorName = document.getElementById('display-inspector-name');
-        const changeNameButton = document.getElementById('change-name-button');
-        const scanResultMessage = document.getElementById('scan-result-message');
-        
-        let db;
-        let inspectorName = '';
+        const mainMessage = document.getElementById('main-message');
 
-        /**
-         * 顯示掃描結果訊息
-         */
-        function showScanMessage(message, type) {
-            scanResultMessage.textContent = message;
-            const typeClasses = {
-                success: 'text-green-400 text-2xl font-bold p-4',
-                error: 'text-red-400 text-xl font-bold p-4',
-                loading: 'text-yellow-400 text-2xl font-bold p-4',
-                info: 'text-gray-300 text-2xl font-bold p-4'
-            };
-            scanResultMessage.className = typeClasses[type] || typeClasses['info'];
-        }
-
-        /**
-         * 更新 Firestore 中的巡檢點資料
-         */
-        async function updateInspectionPoint(pointId) {
-            if (!db) {
-                showScanMessage('資料庫連線失敗。', 'error');
-                return;
-            }
-            if (!pointId) {
-                showScanMessage('未從 NFC 標籤讀取到巡檢點 ID。', 'info');
-                return;
-            }
-            if (!inspectorName) {
-                showScanMessage('錯誤：找不到巡檢員姓名。', 'error');
-                return;
-            }
-
+        async function handleStandardInspection(db, pointId, inspectorName) {
             const pointRef = doc(db, 'inspectionPoints', pointId);
             try {
-                showScanMessage(`[${pointId}] 正在更新...`, 'loading');
+                mainMessage.textContent = `正在更新 [${pointId}]...`;
                 await updateDoc(pointRef, {
                     status: 'inspected',
                     inspectorName: inspectorName,
                     timestamp: serverTimestamp()
                 });
-                showScanMessage(`[${pointId}] 已巡檢成功！`, 'success');
+                const logCollection = collection(db, 'standard_inspection_log');
+                await addDoc(logCollection, {
+                    pointId: pointId,
+                    inspectorName: inspectorName,
+                    timestamp: serverTimestamp()
+                });
+                mainMessage.textContent = `[${pointId}] 已巡檢成功！`;
+                mainMessage.parentElement.querySelector('.loader').style.display = 'none';
+                mainMessage.className = 'text-2xl text-green-400';
                 if ('vibrate' in navigator) navigator.vibrate(200);
             } catch (error) {
-                console.error("更新 Firestore 失敗:", error);
-                showScanMessage(`更新失敗！原因: ${error.code || error.message}`, 'error');
-            }
-        }
-        
-        /**
-         * 處理姓名儲存與介面切換
-         */
-        function handleNameSetup(callback) {
-            const name = inspectorNameInput.value.trim();
-            if (name) {
-                inspectorName = name;
-                localStorage.setItem('inspectorName', name);
-                displayInspectorName.textContent = name;
-                nameInputSection.classList.add('hidden');
-                scannerSection.classList.remove('hidden');
-                if (callback) callback();
-            } else {
-                alert('請輸入您的姓名或工號');
+                mainMessage.textContent = `更新失敗: ${error.code || error.message}`;
+                mainMessage.parentElement.querySelector('.loader').style.display = 'none';
+                mainMessage.className = 'text-xl text-red-400';
             }
         }
 
-        /**
-         * 應用程式主進入點
-         */
         async function main() {
-            // 預先顯示掃描介面，避免畫面閃爍
-            scannerSection.classList.remove('hidden');
-            nameInputSection.classList.add('hidden');
-
             if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
-                showScanMessage('設定錯誤：請在程式碼中貼上您自己的 Firebase 設定物件 (firebaseConfig)。', 'error');
+                mainMessage.textContent = 'Firebase 設定錯誤！';
+                mainMessage.className = 'text-xl text-red-400';
                 return;
             }
-
+            const urlParams = new URLSearchParams(window.location.search);
+            const pointId = urlParams.get('id');
+            if (!pointId) {
+                mainMessage.textContent = '無效的巡檢點 ID。';
+                return;
+            }
+            if (pointId === 'acetylene') {
+                mainMessage.textContent = '偵測到乙炔存放區，正在導向專用頁面...';
+                window.location.href = `acetylene.html${window.location.search}`;
+                return;
+            }
+            const inspectorName = localStorage.getItem('inspectorName');
+            if (!inspectorName) {
+                alert('找不到巡檢員姓名，請先完成簽名設定。');
+                mainMessage.textContent = '找不到巡檢員姓名。';
+                return;
+            }
             try {
-                // 步驟 1: 初始化並建立穩定連線
-                showScanMessage('正在初始化...', 'loading');
                 const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
+                const db = getFirestore(app);
                 const auth = getAuth(app);
-                
-                showScanMessage('正在連線到伺服器...', 'loading');
                 await signInAnonymously(auth);
-                
-                // 步驟 2: 取得巡檢點 ID
-                const urlParams = new URLSearchParams(window.location.search);
-                const pointIdFromUrl = urlParams.get('id');
-
-                // 步驟 3: 取得巡檢員姓名 (如果沒有就等待輸入)
-                const savedName = localStorage.getItem('inspectorName');
-                if (savedName) {
-                    inspectorName = savedName;
-                    displayInspectorName.textContent = savedName;
-                } else {
-                    nameInputSection.classList.remove('hidden');
-                    scannerSection.classList.add('hidden');
-                    
-                    // 等待使用者輸入姓名
-                    await new Promise(resolve => {
-                        saveNameButton.onclick = () => handleNameSetup(resolve);
-                        inspectorNameInput.onkeypress = (e) => {
-                            if (e.key === 'Enter') saveNameButton.click();
-                        };
-                    });
-                }
-                
-                // 步驟 4: 在一切準備就緒後，才執行更新
-                await updateInspectionPoint(pointIdFromUrl);
-
-                // 綁定更換姓名按鈕事件
-                changeNameButton.addEventListener('click', () => {
-                    localStorage.removeItem('inspectorName');
-                    window.location.reload();
-                });
-
+                await handleStandardInspection(db, pointId, inspectorName);
             } catch (error) {
-                console.error("Firebase 初始化或登入失敗:", error);
-                showScanMessage(`連線失敗: ${error.code || error.message}`, 'error');
+                mainMessage.textContent = `連線失敗: ${error.code || error.message}`;
+                mainMessage.className = 'text-xl text-red-400';
             }
         }
-
-        // 啟動應用程式
         main();
-
     </script>
 </body>
 </html>
