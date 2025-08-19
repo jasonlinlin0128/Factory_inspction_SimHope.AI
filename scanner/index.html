@@ -18,7 +18,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, updateDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         // TODO: 請在此貼上您的 Firebase 設定物件
@@ -42,6 +42,13 @@ const firebaseConfig = {
             try {
                 mainMessage.textContent = `正在更新 [${pointId}]...`;
                 await updateDoc(pointRef, {
+                    // 新增：將此筆紀錄存入 standard_inspection_log 集合
+                    const logCollection = collection(db, 'standard_inspection_log');
+                    await addDoc(logCollection, {
+                        pointId: pointId, // 記錄是哪個點
+                        inspectorName: inspectorName,
+                        timestamp: serverTimestamp()
+                    });
                     status: 'inspected',
                     inspectorName: inspectorName,
                     timestamp: serverTimestamp()
@@ -109,3 +116,4 @@ const firebaseConfig = {
     </script>
 </body>
 </html>
+
