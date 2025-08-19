@@ -93,21 +93,32 @@
             const pointRef = doc(db, 'inspectionPoints', pointId);
             try {
                 mainMessage.textContent = `正在更新 [${pointId}]...`;
-                await updateDoc(pointRef, { status: 'inspected', inspectorName, timestamp: serverTimestamp() });
-                await addDoc(collection(db, 'standard_inspection_log'), { pointId, inspectorName, timestamp: serverTimestamp() });
+                
+                // 步驟 1: 更新主儀表板的狀態
+                await updateDoc(pointRef, { 
+                    status: 'inspected', 
+                    inspectorName, 
+                    timestamp: serverTimestamp() 
+                });
+
+                // 步驟 2: 將此筆紀錄存入 standard_inspection_log 集合
+                await addDoc(collection(db, 'standard_inspection_log'), { 
+                    pointId, 
+                    inspectorName, 
+                    timestamp: serverTimestamp() 
+                });
                 
                 mainMessage.textContent = `[${pointId}] 已巡檢成功！`;
                 mainMessage.parentElement.querySelector('.loader').style.display = 'none';
                 mainMessage.className = 'text-2xl text-green-400';
                 if ('vibrate' in navigator) navigator.vibrate(200);
 
-                // **新增**：顯示回報異常按鈕
                 const reportButton = document.createElement('button');
                 reportButton.textContent = '回報異常狀況';
                 reportButton.className = 'mt-6 bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded-lg transition-colors';
                 reportButton.onclick = () => {
                     reportSection.classList.remove('hidden');
-                    reportButton.style.display = 'none'; // 點擊後隱藏自己
+                    reportButton.style.display = 'none';
                 };
                 mainMessage.parentElement.appendChild(reportButton);
 
@@ -125,7 +136,7 @@
             try {
                 await addDoc(collection(db, 'abnormal_reports'), {
                     pointId,
-                    pointName: pointId, // 暫時用 ID 作為名稱
+                    pointName: pointId,
                     inspectorName,
                     description,
                     imageBase64: compressedBase64,
@@ -134,7 +145,7 @@
                 });
                 reportStatus.textContent = '異常回報成功！';
                 reportStatus.className = 'text-center mt-2 h-5 text-green-400';
-                reportSection.style.display = 'none'; // 成功後隱藏回報區
+                reportSection.style.display = 'none';
             } catch (error) {
                 reportStatus.textContent = `提交失敗: ${error.message}`;
                 reportStatus.className = 'text-center mt-2 h-5 text-red-400';
@@ -172,7 +183,6 @@
             }
         }
 
-        // 綁定回報區事件
         const reportPhotoInput = document.getElementById('report-photo');
         const reportPhotoPreview = document.getElementById('report-photo-preview');
         let reportPhotoBase64 = null;
