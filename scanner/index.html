@@ -175,9 +175,63 @@
             });
         }
 
-        async function resetAllStatus() { /* ... 此函式不變 ... */ }
-        async function openHistoryModal(pointId, pointName) { /* ... 此函式不變 ... */ }
-        function closeModal() { /* ... 此函式不變 ... */ }
+        async function resetAllStatus() { 
+            if (!confirm('您確定要重置所有巡檢點的狀態嗎？此操作無法復原。')) return;
+            try {
+                const batch = writeBatch(db);
+                inspectionPoints.forEach(point => {
+                    const pointRef = doc(db, 'inspectionPoints', point.id);
+                    batch.set(pointRef, { name: point.name, status: 'pending', inspectorName: null, timestamp: null });
+                });
+                await batch.commit();
+                alert('所有巡檢點狀態已成功重置！');
+            } catch (error) {
+                console.error("重置狀態時發生錯誤: ", error);
+                alert('重置失敗，請檢查控制台錯誤訊息。');
+            }
+         }
+        async function openHistoryModal(pointId, pointName) { 
+            modalTitle.textContent = `${pointName} - 7 日巡檢紀錄`;
+            historyModal.classList.remove('hidden');
+            modalBody.innerHTML = '<p class="text-slate-500 text-center">正在載入紀錄...</p>';
+            const logCollectionName = pointId === 'acetylene' ? 'acetylene_log' : 'standard_inspection_log';
+            const logCollectionRef = collection(db, logCollectionName);
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            let q = pointId === 'acetylene'
+                ? query(logCollectionRef, where("timestamp", ">=", sevenDaysAgo))
+                : query(logCollectionRef, where("pointId", "==", pointId), where("timestamp", ">=", sevenDaysAgo));
+            try {
+                const querySnapshot = await getDocs(q);
+                let logs = querySnapshot.docs.map(doc => doc.data()).filter(log => log.timestamp);
+                logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+                if (logs.length === 0) {
+                    modalBody.innerHTML = '<p class="text-slate-500 text-center">最近 7 日無巡檢紀錄。</p>';
+                    return;
+                }
+                modalBody.innerHTML = '';
+                logs.forEach(log => {
+                    const formattedTime = log.timestamp.toDate().toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short', hour12: false });
+                    const imageHTML = log.imageBase64 ? `<img src="${log.imageBase64}" alt="巡檢照片" class="w-full h-auto rounded-md mt-2 border border-slate-200">` : '';
+                    const logElement = document.createElement('div');
+                    logElement.className = 'border border-slate-200 p-4 rounded-lg bg-white';
+                    logElement.innerHTML = `
+                        <div class="flex justify-between items-center mb-2">
+                            <p class="font-bold text-lg text-slate-800">${log.inspectorName}</p>
+                            <p class="text-sm text-slate-500">${formattedTime}</p>
+                        </div>
+                        ${imageHTML}
+                    `;
+                    modalBody.appendChild(logElement);
+                });
+            } catch (error) {
+                console.error("讀取歷史紀錄失敗:", error);
+                modalBody.innerHTML = `<p class="text-red-500 text-center">讀取紀錄失敗: ${error.message}</p>`;
+            }
+         }
+        function closeModal() { 
+            historyModal.classList.add('hidden');
+         }
 
         document.getElementById('reset-button').addEventListener('click', resetAllStatus);
         closeModalButton.addEventListener('click', closeModal);
