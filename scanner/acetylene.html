@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>乙炔區拍照巡檢</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; -webkit-tap-highlight-color: transparent; }
+        /* 美化滾動條 */
+        #history-log::-webkit-scrollbar { width: 8px; }
+        #history-log::-webkit-scrollbar-track { background: #f1f5f9; }
+        #history-log::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        #history-log::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans">
+
+    <div class="container mx-auto p-4 max-w-lg h-screen flex flex-col">
+        <header class="text-center mb-6 pt-4 flex-shrink-0">
+            <h1 class="text-2xl font-bold text-slate-900">乙炔存放區巡檢</h1>
+            <p class="text-slate-500">巡檢員: <span id="display-inspector-name" class="font-semibold text-blue-600"></span></p>
+        </header>
+
+        <!-- 拍照上傳區 -->
+        <section class="bg-white p-5 rounded-lg border border-slate-200 shadow-sm mb-6 flex-shrink-0">
+            <h2 class="text-lg font-semibold mb-2 text-slate-800">1. 拍照確認閥門</h2>
+            <p class="text-sm text-slate-500 mb-5">請使用相機拍攝閥門已確實關閉的照片。</p>
+            
+            <input type="file" id="photo-input" accept="image/*" capture="environment" class="hidden">
+            
+            <!-- **已修改**：按鈕顏色已與儀表板同步 -->
+            <button id="take-photo-button" class="w-full bg-slate-700 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-md transition-colors duration-200 transform active:scale-95">
+                啟動相機拍照
+            </button>
+            
+            <img id="photo-preview" class="hidden w-full rounded-md my-4 border border-slate-200" alt="照片預覽">
+            
+            <button id="upload-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md transition-colors duration-200 transform active:scale-95 hidden" disabled>
+                上傳並完成巡檢
+            </button>
+
+            <div id="upload-status" class="mt-4 text-center h-6"></div>
+        </section>
+
+        <!-- 七日內巡檢紀錄 -->
+        <section class="flex-1 flex flex-col bg-white border border-slate-200 rounded-lg shadow-sm min-h-0">
+            <h2 class="text-lg font-semibold text-slate-800 p-5 flex-shrink-0">2. 最近 7 日巡檢紀錄</h2>
+            <div id="history-log" class="space-y-4 overflow-y-auto flex-1 p-5 pt-0">
+                <p class="text-slate-400 text-center pt-10">正在載入紀錄...</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, doc, updateDoc, collection, addDoc, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCux2MYcB_BgeCxTIu_gGzezkqYZFHO8RQ",
+            authDomain: "factory-inspction-simhope-ai.firebaseapp.com",
+            projectId: "factory-inspction-simhope-ai",
+            storageBucket: "factory-inspction-simhope-ai.appspot.com",
+            messagingSenderId: "386322024576",
+            appId: "1:386322024576:web:fdb68ed57b162987487e65",
+            measurementId: "G-HKPEP59T1P"
+        };
+        
+        const displayName = document.getElementById('display-inspector-name');
+        const photoInput = document.getElementById('photo-input');
+        const takePhotoButton = document.getElementById('take-photo-button');
+        const photoPreview = document.getElementById('photo-preview');
+        const uploadButton = document.getElementById('upload-button');
+        const uploadStatus = document.getElementById('upload-status');
+        const historyLog = document.getElementById('history-log');
+
+        let db, auth;
+        let inspectorName = '';
+        let compressedPhotoBase64 = null;
+
+        async function main() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                await signInAnonymously(auth);
+            } catch (error) {
+                alert(`Firebase 連線失敗: ${error.message}`);
+                return;
+            }
+
+            inspectorName = localStorage.getItem('inspectorName');
+            if (!inspectorName) {
+                alert('找不到巡檢員姓名，將返回主頁。');
+                return;
+            }
+            displayName.textContent = inspectorName;
+
+            bindEvents();
+            loadHistory();
+        }
+
+        function compressImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = event => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const scaleSize = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scaleSize;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.7));
+                    };
+                    img.onerror = reject;
+                };
+                reader.onerror = reject;
+            });
+        }
+
+        function bindEvents() {
+            takePhotoButton.addEventListener('click', () => photoInput.click());
+            
+            photoInput.addEventListener('change', async (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    try {
+                        photoPreview.src = URL.createObjectURL(file);
+                        photoPreview.classList.remove('hidden');
+                        compressedPhotoBase64 = await compressImage(file);
+                        uploadButton.classList.remove('hidden');
+                        uploadButton.disabled = false;
+                        takePhotoButton.textContent = '重新拍照';
+                    } catch (error) {
+                        alert("圖片處理失敗，請再試一次。");
+                    }
+                }
+            });
+
+            uploadButton.addEventListener('click', handleUpload);
+        }
+
+        async function handleUpload() {
+            if (!compressedPhotoBase64) return;
+
+            uploadButton.disabled = true;
+            uploadStatus.textContent = '正在上傳紀錄...';
+            uploadStatus.className = 'mt-4 text-center h-6 text-yellow-600';
+
+            try {
+                const logCollection = collection(db, 'acetylene_log');
+                await addDoc(logCollection, {
+                    inspectorName: inspectorName,
+                    imageBase64: compressedPhotoBase64,
+                    timestamp: serverTimestamp()
+                });
+
+                const mainPointRef = doc(db, 'inspectionPoints', 'acetylene');
+                await updateDoc(mainPointRef, {
+                    status: 'inspected',
+                    inspectorName: inspectorName,
+                    timestamp: serverTimestamp()
+                });
+
+                uploadStatus.textContent = '巡檢成功！';
+                uploadStatus.className = 'mt-4 text-center h-6 text-green-600';
+                loadHistory();
+            } catch (error) {
+                uploadStatus.textContent = `上傳失敗: ${error.message}`;
+                uploadStatus.className = 'mt-4 text-center h-6 text-red-500';
+                uploadButton.disabled = false;
+            }
+        }
+
+        async function loadHistory() {
+            historyLog.innerHTML = '<p class="text-slate-400 text-center pt-10">正在載入紀錄...</p>';
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const q = query(collection(db, 'acetylene_log'), where("timestamp", ">=", sevenDaysAgo));
+
+            try {
+                const querySnapshot = await getDocs(q);
+                let logs = querySnapshot.docs.map(doc => doc.data()).filter(log => log.timestamp);
+                logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+
+                if (logs.length === 0) {
+                    historyLog.innerHTML = '<p class="text-slate-400 text-center pt-10">最近 7 日無巡檢紀錄。</p>';
+                    return;
+                }
+
+                historyLog.innerHTML = '';
+                logs.forEach(log => {
+                    const formattedTime = log.timestamp.toDate().toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short', hour12: false });
+                    const logElement = document.createElement('div');
+                    logElement.className = 'bg-slate-50 p-3 rounded-lg border border-slate-200';
+                    logElement.innerHTML = `
+                        <div class="flex justify-between items-center text-sm mb-2">
+                            <p class="font-semibold text-slate-700">${log.inspectorName}</p>
+                            <p class="text-slate-500">${formattedTime}</p>
+                        </div>
+                        <img src="${log.imageBase64}" alt="巡檢照片" class="w-full h-auto rounded-md border border-slate-200">
+                    `;
+                    historyLog.appendChild(logElement);
+                });
+            } catch (error) {
+                historyLog.innerHTML = `<p class="text-red-500 text-center pt-10">讀取紀錄失敗: ${error.message}</p>`;
+            }
+        }
+        main();
+    </script>
+</body>
+</html>
