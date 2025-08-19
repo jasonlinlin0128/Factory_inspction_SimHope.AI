@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>首次巡檢簽名</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; -webkit-tap-highlight-color: transparent; }
+    </style>
+</head>
+<body class="bg-slate-100 flex items-center justify-center h-screen p-4">
+
+    <div class="w-full max-w-sm mx-auto">
+        <div class="bg-white p-8 rounded-lg border border-slate-200 shadow-sm text-center">
+            <h1 class="text-2xl font-bold text-slate-800 mb-2">首次巡檢簽名</h1>
+            <p class="text-slate-500 mb-6">請輸入您的姓名或工號，系統將會記住您的設定。</p>
+            
+            <input type="text" id="inspector-name-input" class="w-full text-center bg-slate-50 p-3 rounded-md border border-slate-300 focus:ring-2 focus:ring-slate-500 focus:outline-none text-lg" placeholder="例如：王大明">
+            
+            <button id="save-name-button" class="w-full mt-4 bg-slate-700 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-md transition-colors duration-200 transform active:scale-95">
+                儲存並開始巡檢
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const nameInput = document.getElementById('inspector-name-input');
+        const saveButton = document.getElementById('save-name-button');
+
+        // 獲取設定完成後要跳轉回去的網址
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirectUrl = urlParams.get('redirectUrl');
+
+        function saveNameAndRedirect() {
+            const name = nameInput.value.trim();
+            if (!name) {
+                alert('請輸入您的姓名或工號！');
+                return;
+            }
+
+            // 將姓名存入瀏覽器的 localStorage
+            localStorage.setItem('inspectorName', name);
+
+            // 如果有指定跳轉網址，就跳轉回去；否則停在原地
+            if (redirectUrl) {
+                window.location.href = redirectUrl;
+            } else {
+                alert('設定成功！');
+            }
+        }
+
+        saveButton.addEventListener('click', saveNameAndRedirect);
+        nameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                saveNameAndRedirect();
+            }
+        });
+    </script>
+</body>
+</html>
