@@ -25,33 +25,36 @@
             <p class="text-slate-500">巡檢員: <span id="display-inspector-name" class="font-semibold text-blue-600"></span></p>
         </header>
 
-        <!-- 拍照上傳區 -->
+        <!-- 1. 拍照上傳區 -->
         <section class="bg-white p-5 rounded-lg border border-slate-200 shadow-sm mb-6 flex-shrink-0">
             <h2 class="text-lg font-semibold mb-2 text-slate-800">1. 拍照確認閥門</h2>
             <p class="text-sm text-slate-500 mb-5">請使用相機拍攝閥門已確實關閉的照片。</p>
-            
             <input type="file" id="photo-input" accept="image/*" capture="environment" class="hidden">
-            
-            <!-- **已修改**：按鈕顏色已與儀表板同步 -->
-            <button id="take-photo-button" class="w-full bg-slate-700 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-md transition-colors duration-200 transform active:scale-95">
-                啟動相機拍照
-            </button>
-            
+            <button id="take-photo-button" class="w-full bg-slate-700 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-md transition-colors">啟動相機拍照</button>
             <img id="photo-preview" class="hidden w-full rounded-md my-4 border border-slate-200" alt="照片預覽">
-            
-            <button id="upload-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md transition-colors duration-200 transform active:scale-95 hidden" disabled>
-                上傳並完成巡檢
-            </button>
-
+            <button id="upload-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md hidden" disabled>上傳並完成巡檢</button>
             <div id="upload-status" class="mt-4 text-center h-6"></div>
         </section>
 
-        <!-- 七日內巡檢紀錄 -->
-        <section class="flex-1 flex flex-col bg-white border border-slate-200 rounded-lg shadow-sm min-h-0">
+        <!-- 2. 七日內巡檢紀錄 -->
+        <section class="flex-1 flex flex-col bg-white border border-slate-200 rounded-lg shadow-sm min-h-0 mb-6">
             <h2 class="text-lg font-semibold text-slate-800 p-5 flex-shrink-0">2. 最近 7 日巡檢紀錄</h2>
             <div id="history-log" class="space-y-4 overflow-y-auto flex-1 p-5 pt-0">
                 <p class="text-slate-400 text-center pt-10">正在載入紀錄...</p>
             </div>
+        </section>
+        
+        <!-- 3. 異常回報區 -->
+        <section id="abnormal-report-section" class="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex-shrink-0">
+            <h2 class="text-lg font-semibold mb-2 text-slate-800">3. 回報異常狀況 (選填)</h2>
+             <textarea id="report-description" class="w-full mt-3 bg-slate-50 p-2 rounded-md border border-slate-300 focus:ring-2 focus:ring-yellow-500 focus:outline-none" rows="3" placeholder="若有異常，請在此描述..."></textarea>
+            <input type="file" id="report-photo" accept="image/*,video/*" capture="environment" class="hidden">
+            <!-- **已修改**：按鈕顏色已同步 -->
+            <button id="report-photo-button" class="w-full mt-3 bg-slate-700 hover:bg-slate-800 text-white py-2 px-3 rounded-md transition-colors">拍攝照片/影片存證</button>
+            <img id="report-photo-preview" class="hidden w-full rounded-md my-3 border border-slate-200">
+            <!-- **已修改**：按鈕顏色改為紅色 -->
+            <button id="submit-report-button" class="w-full mt-3 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-md transition-colors">提交異常回報</button>
+            <p id="report-status" class="text-center mt-2 h-5"></p>
         </section>
     </div>
 
@@ -71,6 +74,7 @@
             measurementId: "G-HKPEP59T1P"
         };
         
+        // 元素獲取
         const displayName = document.getElementById('display-inspector-name');
         const photoInput = document.getElementById('photo-input');
         const takePhotoButton = document.getElementById('take-photo-button');
@@ -78,33 +82,33 @@
         const uploadButton = document.getElementById('upload-button');
         const uploadStatus = document.getElementById('upload-status');
         const historyLog = document.getElementById('history-log');
+        const reportDescription = document.getElementById('report-description');
+        const reportPhotoInput = document.getElementById('report-photo');
+        const reportPhotoButton = document.getElementById('report-photo-button');
+        const reportPhotoPreview = document.getElementById('report-photo-preview');
+        const submitReportButton = document.getElementById('submit-report-button');
+        const reportStatus = document.getElementById('report-status');
 
-        let db, auth;
-        let inspectorName = '';
-        let compressedPhotoBase64 = null;
+        let db, auth, inspectorName, compressedPhotoBase64 = null, compressedReportPhotoBase64 = null;
 
+        // 主邏輯
         async function main() {
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 await signInAnonymously(auth);
-            } catch (error) {
-                alert(`Firebase 連線失敗: ${error.message}`);
-                return;
-            }
+            } catch (error) { alert(`Firebase 連線失敗: ${error.message}`); return; }
 
             inspectorName = localStorage.getItem('inspectorName');
-            if (!inspectorName) {
-                alert('找不到巡檢員姓名，將返回主頁。');
-                return;
-            }
+            if (!inspectorName) { alert('找不到巡檢員姓名，將返回主頁。'); return; }
             displayName.textContent = inspectorName;
 
             bindEvents();
             loadHistory();
         }
 
+        // 圖片壓縮
         function compressImage(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -128,76 +132,95 @@
             });
         }
 
+        // 事件綁定
         function bindEvents() {
-            takePhotoButton.addEventListener('click', () => photoInput.click());
-            
-            photoInput.addEventListener('change', async (event) => {
-                const file = event.target.files[0];
+            takePhotoButton.onclick = () => photoInput.click();
+            photoInput.onchange = async (e) => {
+                const file = e.target.files[0];
                 if (file) {
-                    try {
-                        photoPreview.src = URL.createObjectURL(file);
-                        photoPreview.classList.remove('hidden');
-                        compressedPhotoBase64 = await compressImage(file);
-                        uploadButton.classList.remove('hidden');
-                        uploadButton.disabled = false;
-                        takePhotoButton.textContent = '重新拍照';
-                    } catch (error) {
-                        alert("圖片處理失敗，請再試一次。");
-                    }
+                    photoPreview.src = URL.createObjectURL(file);
+                    photoPreview.classList.remove('hidden');
+                    compressedPhotoBase64 = await compressImage(file);
+                    uploadButton.classList.remove('hidden');
+                    uploadButton.disabled = false;
+                    takePhotoButton.textContent = '重新拍照';
                 }
-            });
+            };
+            uploadButton.onclick = handleUpload;
 
-            uploadButton.addEventListener('click', handleUpload);
+            // 異常回報事件
+            reportPhotoButton.onclick = () => reportPhotoInput.click();
+            reportPhotoInput.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    reportPhotoPreview.src = URL.createObjectURL(file);
+                    reportPhotoPreview.classList.remove('hidden');
+                    compressedReportPhotoBase64 = await compressImage(file);
+                }
+            };
+            submitReportButton.onclick = submitAbnormalReport;
         }
 
+        // 正常巡檢上傳
         async function handleUpload() {
             if (!compressedPhotoBase64) return;
-
             uploadButton.disabled = true;
             uploadStatus.textContent = '正在上傳紀錄...';
-            uploadStatus.className = 'mt-4 text-center h-6 text-yellow-600';
-
             try {
-                const logCollection = collection(db, 'acetylene_log');
-                await addDoc(logCollection, {
-                    inspectorName: inspectorName,
-                    imageBase64: compressedPhotoBase64,
-                    timestamp: serverTimestamp()
-                });
-
-                const mainPointRef = doc(db, 'inspectionPoints', 'acetylene');
-                await updateDoc(mainPointRef, {
-                    status: 'inspected',
-                    inspectorName: inspectorName,
-                    timestamp: serverTimestamp()
-                });
-
+                await addDoc(collection(db, 'acetylene_log'), { inspectorName, imageBase64: compressedPhotoBase64, timestamp: serverTimestamp() });
+                await updateDoc(doc(db, 'inspectionPoints', 'acetylene'), { status: 'inspected', inspectorName, timestamp: serverTimestamp() });
                 uploadStatus.textContent = '巡檢成功！';
                 uploadStatus.className = 'mt-4 text-center h-6 text-green-600';
                 loadHistory();
             } catch (error) {
                 uploadStatus.textContent = `上傳失敗: ${error.message}`;
-                uploadStatus.className = 'mt-4 text-center h-6 text-red-500';
                 uploadButton.disabled = false;
             }
         }
+        
+        // 異常回報提交
+        async function submitAbnormalReport() {
+            const description = reportDescription.value;
+            if (!description) {
+                alert('請填寫狀況描述！');
+                return;
+            }
+            reportStatus.textContent = '正在提交回報...';
+            try {
+                await addDoc(collection(db, 'abnormal_reports'), {
+                    pointId: 'acetylene',
+                    pointName: '乙炔存放區',
+                    inspectorName,
+                    description,
+                    imageBase64: compressedReportPhotoBase64,
+                    timestamp: serverTimestamp(),
+                    status: 'reported'
+                });
+                reportStatus.textContent = '異常回報成功！';
+                reportStatus.className = 'text-center mt-2 h-5 text-green-600';
+                // 清空表單
+                reportDescription.value = '';
+                reportPhotoPreview.classList.add('hidden');
+                compressedReportPhotoBase64 = null;
+            } catch (error) {
+                reportStatus.textContent = `提交失敗: ${error.message}`;
+            }
+        }
 
+        // 載入歷史紀錄
         async function loadHistory() {
             historyLog.innerHTML = '<p class="text-slate-400 text-center pt-10">正在載入紀錄...</p>';
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
             const q = query(collection(db, 'acetylene_log'), where("timestamp", ">=", sevenDaysAgo));
-
             try {
                 const querySnapshot = await getDocs(q);
                 let logs = querySnapshot.docs.map(doc => doc.data()).filter(log => log.timestamp);
                 logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
-
                 if (logs.length === 0) {
                     historyLog.innerHTML = '<p class="text-slate-400 text-center pt-10">最近 7 日無巡檢紀錄。</p>';
                     return;
                 }
-
                 historyLog.innerHTML = '';
                 logs.forEach(log => {
                     const formattedTime = log.timestamp.toDate().toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short', hour12: false });
