@@ -47,10 +47,10 @@
         
         <!-- 3. 異常回報區 -->
         <section id="abnormal-report-section" class="bg-white p-5 rounded-lg border border-slate-200 shadow-sm mb-6 flex-shrink-0">
-            <h2 class="text-lg font-semibold mb-2 text-slate-800">3. 回報異常狀況 (選填)</h2>
+            <h2 class="text-lg font-semibold mb-2 text-slate-800">3. 回報異常狀況 (有異常才需要填寫)</h2>
              <textarea id="report-description" class="w-full mt-3 bg-slate-50 p-2 rounded-md border border-slate-300 focus:ring-2 focus:ring-yellow-500 focus:outline-none" rows="3" placeholder="若有異常，請在此描述..."></textarea>
             <input type="file" id="report-photo" accept="image/*,video/*" capture="environment" class="hidden">
-            <button id="report-photo-button" class="w-full mt-3 bg-slate-700 hover:bg-slate-800 text-white py-2 px-3 rounded-md transition-colors">拍攝照片/影片存證</button>
+            <button id="report-photo-button" class="w-full mt-3 bg-slate-700 hover:bg-slate-800 text-white py-2 px-3 rounded-md transition-colors">拍攝異常照片/影片</button>
             <img id="report-photo-preview" class="hidden w-full rounded-md my-3 border border-slate-200">
             <button id="submit-report-button" class="w-full mt-3 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-md transition-colors">提交異常回報</button>
             <p id="report-status" class="text-center mt-2 h-5"></p>
