@@ -39,8 +39,10 @@
 
     <!-- Firebase SDK -->
     <script type="module">
+        // 匯入 Firebase 所有需要的模組，包含 Auth
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, doc, updateDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         // TODO: 請在此貼上您的 Firebase 設定物件
 const firebaseConfig = {
@@ -53,27 +55,6 @@ const firebaseConfig = {
   measurementId: "G-HKPEP59T1P"
 };
         
-        // 初始化 Firebase
-        let app;
-        let db;
-        try {
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            // 開啟詳細日誌，方便從電腦瀏覽器偵錯
-            // setLogLevel('debug'); 
-        } catch (error) {
-            // 如果 Firebase 初始化失敗，直接在畫面上顯示錯誤
-            const nameSection = document.getElementById('name-input-section');
-            const scannerSection = document.getElementById('scanner-section');
-            nameSection.classList.add('hidden');
-            scannerSection.classList.remove('hidden');
-            const messageElement = document.getElementById('scan-result-message');
-            messageElement.textContent = `Firebase 初始化失敗: ${error.message}`;
-            messageElement.className = 'text-red-400 text-xl font-bold p-4';
-            console.error("Firebase 初始化失敗:", error);
-        }
-        
-
         // 獲取頁面元素
         const nameInputSection = document.getElementById('name-input-section');
         const scannerSection = document.getElementById('scanner-section');
@@ -82,38 +63,30 @@ const firebaseConfig = {
         const displayInspectorName = document.getElementById('display-inspector-name');
         const changeNameButton = document.getElementById('change-name-button');
         const scanResultMessage = document.getElementById('scan-result-message');
-
+        
+        let db;
         let inspectorName = '';
 
         /**
          * 顯示掃描結果訊息
-         * @param {string} message - 要顯示的訊息
-         * @param {'success' | 'error' | 'loading' | 'info'} type - 訊息類型
          */
         function showScanMessage(message, type) {
             scanResultMessage.textContent = message;
-            switch (type) {
-                case 'success':
-                    scanResultMessage.className = 'text-green-400 text-2xl font-bold p-4';
-                    break;
-                case 'error':
-                    scanResultMessage.className = 'text-red-400 text-xl font-bold p-4';
-                    break;
-                case 'loading':
-                    scanResultMessage.className = 'text-yellow-400 text-2xl font-bold p-4';
-                    break;
-                default:
-                     scanResultMessage.className = 'text-gray-300 text-2xl font-bold p-4';
-            }
+            const typeClasses = {
+                success: 'text-green-400 text-2xl font-bold p-4',
+                error: 'text-red-400 text-xl font-bold p-4',
+                loading: 'text-yellow-400 text-2xl font-bold p-4',
+                info: 'text-gray-300 text-2xl font-bold p-4'
+            };
+            scanResultMessage.className = typeClasses[type] || typeClasses['info'];
         }
 
         /**
          * 更新 Firestore 中的巡檢點資料
-         * @param {string} pointId - 巡檢點 ID
          */
         async function updateInspectionPoint(pointId) {
             if (!db) {
-                showScanMessage('資料庫連線失敗，請檢查 Firebase 設定。', 'error');
+                showScanMessage('資料庫連線失敗。', 'error');
                 return;
             }
             if (!pointId) {
@@ -128,27 +101,21 @@ const firebaseConfig = {
             const pointRef = doc(db, 'inspectionPoints', pointId);
             try {
                 showScanMessage(`[${pointId}] 正在更新...`, 'loading');
-                
                 await updateDoc(pointRef, {
                     status: 'inspected',
                     inspectorName: inspectorName,
                     timestamp: serverTimestamp()
                 });
-                
                 showScanMessage(`[${pointId}] 已巡檢成功！`, 'success');
-                if ('vibrate' in navigator) {
-                    navigator.vibrate(200);
-                }
+                if ('vibrate' in navigator) navigator.vibrate(200);
             } catch (error) {
                 console.error("更新 Firestore 失敗:", error);
-                // **關鍵：將詳細錯誤訊息顯示在畫面上**
                 showScanMessage(`更新失敗！原因: ${error.code || error.message}`, 'error');
             }
         }
         
         /**
          * 處理姓名儲存與介面切換
-         * @param {Function} callback - 儲存姓名後要執行的回呼函式
          */
         function handleNameSetup(callback) {
             const name = inspectorNameInput.value.trim();
@@ -164,46 +131,69 @@ const firebaseConfig = {
             }
         }
 
-        // 頁面載入時的初始化邏輯
-        function initialize() {
-            const savedName = localStorage.getItem('inspectorName');
-            const urlParams = new URLSearchParams(window.location.search);
-            const pointIdFromUrl = urlParams.get('id');
+        /**
+         * 應用程式主進入點
+         */
+        async function main() {
+            // 預先顯示掃描介面，避免畫面閃爍
+            scannerSection.classList.remove('hidden');
+            nameInputSection.classList.add('hidden');
 
-            if (savedName) {
-                inspectorName = savedName;
-                displayInspectorName.textContent = savedName;
-                nameInputSection.classList.add('hidden');
-                scannerSection.classList.remove('hidden');
-                updateInspectionPoint(pointIdFromUrl);
-            } else {
-                nameInputSection.classList.remove('hidden');
-                scannerSection.classList.add('hidden');
+            if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                showScanMessage('設定錯誤：請在程式碼中貼上您自己的 Firebase 設定物件 (firebaseConfig)。', 'error');
+                return;
             }
-            
-            saveNameButton.addEventListener('click', () => {
-                handleNameSetup(() => {
-                    updateInspectionPoint(pointIdFromUrl);
-                });
-            });
-            inspectorNameInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    saveNameButton.click();
+
+            try {
+                // 步驟 1: 初始化並建立穩定連線
+                showScanMessage('正在初始化...', 'loading');
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                const auth = getAuth(app);
+                
+                showScanMessage('正在連線到伺服器...', 'loading');
+                await signInAnonymously(auth);
+                
+                // 步驟 2: 取得巡檢點 ID
+                const urlParams = new URLSearchParams(window.location.search);
+                const pointIdFromUrl = urlParams.get('id');
+
+                // 步驟 3: 取得巡檢員姓名 (如果沒有就等待輸入)
+                const savedName = localStorage.getItem('inspectorName');
+                if (savedName) {
+                    inspectorName = savedName;
+                    displayInspectorName.textContent = savedName;
+                } else {
+                    nameInputSection.classList.remove('hidden');
+                    scannerSection.classList.add('hidden');
+                    
+                    // 等待使用者輸入姓名
+                    await new Promise(resolve => {
+                        saveNameButton.onclick = () => handleNameSetup(resolve);
+                        inspectorNameInput.onkeypress = (e) => {
+                            if (e.key === 'Enter') saveNameButton.click();
+                        };
+                    });
                 }
-            });
+                
+                // 步驟 4: 在一切準備就緒後，才執行更新
+                await updateInspectionPoint(pointIdFromUrl);
 
-            changeNameButton.addEventListener('click', () => {
-                localStorage.removeItem('inspectorName');
-                window.location.reload();
-            });
+                // 綁定更換姓名按鈕事件
+                changeNameButton.addEventListener('click', () => {
+                    localStorage.removeItem('inspectorName');
+                    window.location.reload();
+                });
+
+            } catch (error) {
+                console.error("Firebase 初始化或登入失敗:", error);
+                showScanMessage(`連線失敗: ${error.code || error.message}`, 'error');
+            }
         }
 
-        // 只有在 Firebase 成功初始化後才執行主邏輯
-        if (db) {
-            initialize();
-        }
+        // 啟動應用程式
+        main();
 
     </script>
 </body>
 </html>
-
