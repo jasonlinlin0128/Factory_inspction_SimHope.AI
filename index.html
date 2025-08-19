@@ -6,9 +6,13 @@
     <title>廠區設備巡檢儀表板</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 自定義樣式，用於卡片過渡效果 */
-        .card {
-            transition: all 0.3s ease-in-out;
+        /* 自定義樣式 */
+        .card { transition: all 0.3s ease-in-out; }
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
+        .modal-content {
+            transition: transform 0.3s ease;
         }
     </style>
 </head>
@@ -29,19 +33,31 @@
         <!-- 巡檢點卡片網格 -->
         <div id="dashboard-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             <!-- 卡片將由 JavaScript 動態生成 -->
-            <div class="text-center p-8 col-span-full">
-                <p class="text-gray-500">正在從 Firebase 加載資料...</p>
-            </div>
         </div>
     </div>
+
+    <!-- 乙炔區歷史紀錄 Modal -->
+    <div id="history-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden modal-overlay">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col modal-content">
+            <header class="flex items-center justify-between p-4 border-b">
+                <h2 class="text-xl font-bold">乙炔存放區 - 7 日巡檢紀錄</h2>
+                <button id="close-modal-button" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+            </header>
+            <main id="modal-body" class="p-6 overflow-y-auto space-y-4">
+                <!-- 歷史紀錄將由 JavaScript 動態生成 -->
+            </main>
+        </div>
+    </div>
+
 
     <!-- Firebase SDK -->
     <script type="module">
         // 匯入 Firebase SDK 模組
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-const firebaseConfig = {
+        // TODO: 請在此貼上您的 Firebase 設定物件
+        const firebaseConfig = {
   apiKey: "AIzaSyCux2MYcB_BgeCxTIu_gGzezkqYZFHO8RQ",
   authDomain: "factory-inspction-simhope-ai.firebaseapp.com",
   projectId: "factory-inspction-simhope-ai",
@@ -69,35 +85,39 @@ const firebaseConfig = {
         ];
 
         const grid = document.getElementById('dashboard-grid');
+        const historyModal = document.getElementById('history-modal');
+        const closeModalButton = document.getElementById('close-modal-button');
+        const modalBody = document.getElementById('modal-body');
 
         /**
          * 渲染所有巡檢點的卡片
-         * @param {Array} pointsData - 從 Firestore 獲取的巡檢點資料陣列
          */
         function renderDashboard(pointsData) {
             grid.innerHTML = ''; // 清空現有卡片
             
-            // 將 Firestore 的資料轉換成以 id 為 key 的物件，方便查找
             const dataMap = pointsData.reduce((map, item) => {
                 map[item.id] = item;
                 return map;
             }, {});
 
             inspectionPoints.forEach(point => {
-                const data = dataMap[point.id] || {}; // 如果 Firestore 沒資料，則使用空物件
-                const status = data.status || 'pending'; // 預設狀態為 '待巡檢'
+                const data = dataMap[point.id] || {};
+                const status = data.status || 'pending';
                 const inspectorName = data.inspectorName || '---';
                 
                 let timestamp = '---';
                 if (data.timestamp && data.timestamp.toDate) {
-                    // 將 Firebase Timestamp 轉換為本地時間格式
                     timestamp = data.timestamp.toDate().toLocaleString('zh-TW', { hour12: false });
                 }
 
-                // 根據狀態決定卡片的顏色
                 const bgColor = status === 'inspected' ? 'bg-green-100 border-green-500' : 'bg-red-100 border-red-500';
                 const statusTextColor = status === 'inspected' ? 'text-green-700' : 'text-red-700';
                 const statusText = status === 'inspected' ? '已巡檢' : '待巡檢';
+
+                // **新增**：如果是乙炔區，加上詳情按鈕
+                const detailsButtonHTML = point.id === 'acetylene'
+                    ? `<button data-id="${point.id}" class="view-details-button mt-4 w-full bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded-md transition-colors">查看詳情</button>`
+                    : '';
 
                 const cardHTML = `
                     <div class="card ${bgColor} border-l-4 rounded-lg shadow-md p-5 flex flex-col justify-between">
@@ -110,10 +130,16 @@ const firebaseConfig = {
                         <div>
                             <p class="text-sm text-gray-600">巡檢員: <span class="font-medium text-gray-900">${inspectorName}</span></p>
                             <p class="text-sm text-gray-600">時間: <span class="font-medium text-gray-900">${timestamp}</span></p>
+                            ${detailsButtonHTML}
                         </div>
                     </div>
                 `;
                 grid.insertAdjacentHTML('beforeend', cardHTML);
+            });
+
+            // 為所有詳情按鈕加上事件監聽
+            document.querySelectorAll('.view-details-button').forEach(button => {
+                button.addEventListener('click', () => openHistoryModal(button.dataset.id));
             });
         }
 
@@ -132,20 +158,13 @@ const firebaseConfig = {
          * 重置所有巡檢點的狀態
          */
         async function resetAllStatus() {
-            // 彈出確認對話框
             const isConfirmed = confirm('您確定要重置所有巡檢點的狀態嗎？此操作無法復原。');
-            if (!isConfirmed) {
-                return;
-            }
+            if (!isConfirmed) return;
 
-            console.log('開始重置所有狀態...');
             try {
-                // 使用 WriteBatch 進行批次更新，效率更高
                 const batch = writeBatch(db);
-                
                 inspectionPoints.forEach(point => {
                     const pointRef = doc(db, 'inspectionPoints', point.id);
-                    // 將狀態重置為 'pending'，並清除巡檢員和時間
                     batch.set(pointRef, {
                         name: point.name,
                         status: 'pending',
@@ -153,7 +172,6 @@ const firebaseConfig = {
                         timestamp: null
                     });
                 });
-
                 await batch.commit();
                 alert('所有巡檢點狀態已成功重置！');
             } catch (error) {
@@ -162,8 +180,68 @@ const firebaseConfig = {
             }
         }
 
-        // 綁定重置按鈕的點擊事件
+        /**
+         * **新增**：打開並載入歷史紀錄 Modal
+         */
+        async function openHistoryModal(pointId) {
+            historyModal.classList.remove('hidden');
+            modalBody.innerHTML = '<p class="text-gray-500 text-center">正在載入紀錄...</p>';
+
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            const logCollection = collection(db, 'acetylene_log');
+            const q = query(logCollection, where("timestamp", ">=", sevenDaysAgo));
+
+            try {
+                const querySnapshot = await getDocs(q);
+                let logs = querySnapshot.docs.map(doc => doc.data());
+                logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+
+                if (logs.length === 0) {
+                    modalBody.innerHTML = '<p class="text-gray-500 text-center">最近 7 日無巡檢紀錄。</p>';
+                    return;
+                }
+
+                modalBody.innerHTML = ''; // 清空
+                logs.forEach(log => {
+                    const logDate = log.timestamp.toDate();
+                    const formattedTime = logDate.toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short', hour12: false });
+                    
+                    const logElement = document.createElement('div');
+                    logElement.className = 'border p-4 rounded-lg bg-gray-50';
+                    logElement.innerHTML = `
+                        <div class="flex justify-between items-center mb-2">
+                            <p class="font-bold text-lg">${log.inspectorName}</p>
+                            <p class="text-sm text-gray-600">${formattedTime}</p>
+                        </div>
+                        <img src="${log.imageBase64}" alt="巡檢照片" class="w-full h-auto rounded-md mt-2">
+                    `;
+                    modalBody.appendChild(logElement);
+                });
+
+            } catch (error) {
+                console.error("讀取歷史紀錄失敗:", error);
+                modalBody.innerHTML = `<p class="text-red-500 text-center">讀取紀錄失敗: ${error.message}</p>`;
+            }
+        }
+
+        /**
+         * **新增**：關閉 Modal
+         */
+        function closeModal() {
+            historyModal.classList.add('hidden');
+        }
+
+        // 綁定事件
         document.getElementById('reset-button').addEventListener('click', resetAllStatus);
+        closeModalButton.addEventListener('click', closeModal);
+        historyModal.addEventListener('click', (event) => {
+            // 點擊背景關閉 Modal
+            if (event.target === historyModal) {
+                closeModal();
+            }
+        });
 
         // 頁面載入後開始監聽資料庫
         listenForUpdates();
