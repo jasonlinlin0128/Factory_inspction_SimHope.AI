@@ -36,11 +36,11 @@
         </div>
     </div>
 
-    <!-- 乙炔區歷史紀錄 Modal -->
+    <!-- 通用歷史紀錄 Modal -->
     <div id="history-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden modal-overlay">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col modal-content">
             <header class="flex items-center justify-between p-4 border-b">
-                <h2 class="text-xl font-bold">乙炔存放區 - 7 日巡檢紀錄</h2>
+                <h2 id="history-modal-title" class="text-xl font-bold">巡檢紀錄</h2>
                 <button id="close-modal-button" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
             </header>
             <main id="modal-body" class="p-6 overflow-y-auto space-y-4">
@@ -54,10 +54,10 @@
     <script type="module">
         // 匯入 Firebase SDK 模組
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // TODO: 請在此貼上您的 Firebase 設定物件
-        const firebaseConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyCux2MYcB_BgeCxTIu_gGzezkqYZFHO8RQ",
   authDomain: "factory-inspction-simhope-ai.firebaseapp.com",
   projectId: "factory-inspction-simhope-ai",
@@ -88,6 +88,7 @@
         const historyModal = document.getElementById('history-modal');
         const closeModalButton = document.getElementById('close-modal-button');
         const modalBody = document.getElementById('modal-body');
+        const modalTitle = document.getElementById('history-modal-title');
 
         /**
          * 渲染所有巡檢點的卡片
@@ -114,10 +115,8 @@
                 const statusTextColor = status === 'inspected' ? 'text-green-700' : 'text-red-700';
                 const statusText = status === 'inspected' ? '已巡檢' : '待巡檢';
 
-                // **新增**：如果是乙炔區，加上詳情按鈕
-                const detailsButtonHTML = point.id === 'acetylene'
-                    ? `<button data-id="${point.id}" class="view-details-button mt-4 w-full bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded-md transition-colors">查看詳情</button>`
-                    : '';
+                // **修改**：為所有卡片都加上詳情按鈕
+                const detailsButtonHTML = `<button data-id="${point.id}" data-name="${point.name}" class="view-details-button mt-4 w-full bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded-md transition-colors">查看詳情</button>`;
 
                 const cardHTML = `
                     <div class="card ${bgColor} border-l-4 rounded-lg shadow-md p-5 flex flex-col justify-between">
@@ -139,7 +138,7 @@
 
             // 為所有詳情按鈕加上事件監聽
             document.querySelectorAll('.view-details-button').forEach(button => {
-                button.addEventListener('click', () => openHistoryModal(button.dataset.id));
+                button.addEventListener('click', () => openHistoryModal(button.dataset.id, button.dataset.name));
             });
         }
 
@@ -181,21 +180,34 @@
         }
 
         /**
-         * **新增**：打開並載入歷史紀錄 Modal
+         * **修改**：打開並載入指定巡檢點的歷史紀錄 Modal
          */
-        async function openHistoryModal(pointId) {
+        async function openHistoryModal(pointId, pointName) {
+            modalTitle.textContent = `${pointName} - 7 日巡檢紀錄`;
             historyModal.classList.remove('hidden');
             modalBody.innerHTML = '<p class="text-gray-500 text-center">正在載入紀錄...</p>';
 
+            // **修改**：決定要查詢哪個集合
+            const logCollectionName = pointId === 'acetylene' ? 'acetylene_log' : 'standard_inspection_log';
+            const logCollectionRef = collection(db, logCollectionName);
+            
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-            const logCollection = collection(db, 'acetylene_log');
-            const q = query(logCollection, where("timestamp", ">=", sevenDaysAgo));
+            // **修改**：如果是標準紀錄，需要用 pointId 篩選
+            let q;
+            if (pointId === 'acetylene') {
+                q = query(logCollectionRef, where("timestamp", ">=", sevenDaysAgo));
+            } else {
+                q = query(logCollectionRef, where("pointId", "==", pointId), where("timestamp", ">=", sevenDaysAgo));
+            }
 
             try {
                 const querySnapshot = await getDocs(q);
                 let logs = querySnapshot.docs.map(doc => doc.data());
+                
+                // Firestore 的 timestamp 物件可能為 null，排序前需處理
+                logs = logs.filter(log => log.timestamp);
                 logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
 
                 if (logs.length === 0) {
@@ -208,6 +220,11 @@
                     const logDate = log.timestamp.toDate();
                     const formattedTime = logDate.toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short', hour12: false });
                     
+                    // **修改**：智慧判斷是否要顯示圖片
+                    const imageHTML = log.imageBase64 
+                        ? `<img src="${log.imageBase64}" alt="巡檢照片" class="w-full h-auto rounded-md mt-2">`
+                        : '';
+
                     const logElement = document.createElement('div');
                     logElement.className = 'border p-4 rounded-lg bg-gray-50';
                     logElement.innerHTML = `
@@ -215,7 +232,7 @@
                             <p class="font-bold text-lg">${log.inspectorName}</p>
                             <p class="text-sm text-gray-600">${formattedTime}</p>
                         </div>
-                        <img src="${log.imageBase64}" alt="巡檢照片" class="w-full h-auto rounded-md mt-2">
+                        ${imageHTML}
                     `;
                     modalBody.appendChild(logElement);
                 });
@@ -227,7 +244,7 @@
         }
 
         /**
-         * **新增**：關閉 Modal
+         * 關閉 Modal
          */
         function closeModal() {
             historyModal.classList.add('hidden');
@@ -237,7 +254,6 @@
         document.getElementById('reset-button').addEventListener('click', resetAllStatus);
         closeModalButton.addEventListener('click', closeModal);
         historyModal.addEventListener('click', (event) => {
-            // 點擊背景關閉 Modal
             if (event.target === historyModal) {
                 closeModal();
             }
