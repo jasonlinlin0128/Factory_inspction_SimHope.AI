@@ -10,19 +10,9 @@
         html, body {
             height: 100%;
         }
-        /* 按鈕點擊時的動畫效果 */
-        .scan-button:active {
-            transform: scale(0.95);
-            filter: brightness(0.9);
-        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col items-center justify-center h-full font-sans p-4">
-
-    <!-- 瀏覽器提示 -->
-    <div id="browser-warning" class="hidden absolute top-0 left-0 right-0 bg-yellow-500 text-black p-2 text-center text-sm">
-        建議使用 Android 上的 Chrome 瀏覽器以獲得最佳體驗。
-    </div>
 
     <div id="name-input-section" class="w-full max-w-sm text-center">
         <h1 class="text-3xl font-bold mb-4">巡檢員簽名</h1>
@@ -40,20 +30,20 @@
             <button id="change-name-button" class="text-sm text-gray-400 underline mt-1">更換姓名</button>
         </header>
 
-        <!-- 主掃描按鈕區 -->
+        <!-- 主訊息區 -->
         <main class="flex flex-col items-center justify-center flex-grow">
-            <div id="auto-scan-message" class="text-center">
-                <!-- 自動掃描時顯示的訊息 -->
+            <div id="scan-result-message" class="text-center text-2xl font-bold">
+                <!-- 掃描結果將顯示於此 -->
             </div>
-            <button id="scan-button" class="scan-button w-64 h-64 bg-cyan-600 rounded-full flex items-center justify-center text-white text-4xl font-bold shadow-lg transition-transform transform active:scale-95 focus:outline-none">
+            <!-- 手動掃描按鈕 (預設隱藏，僅在非 iPhone 裝置顯示) -->
+            <button id="manual-scan-button" class="hidden mt-8 w-64 h-64 bg-cyan-600 rounded-full flex items-center justify-center text-white text-4xl font-bold shadow-lg transition-transform transform active:scale-95 focus:outline-none">
                 手動掃描
             </button>
-            <p id="status-message" class="mt-8 text-xl h-10 text-gray-300"></p>
         </main>
         
         <!-- 底部提示區 -->
-        <footer class="w-full pb-4">
-            <p class="text-gray-500">若自動掃描失敗，可使用手動掃描</p>
+        <footer id="footer-note" class="w-full pb-4 text-gray-500">
+            <!-- 提示文字將由 JS 動態更新 -->
         </footer>
     </div>
 
@@ -83,46 +73,43 @@
         const saveNameButton = document.getElementById('save-name-button');
         const displayInspectorName = document.getElementById('display-inspector-name');
         const changeNameButton = document.getElementById('change-name-button');
-        const scanButton = document.getElementById('scan-button');
-        const statusMessage = document.getElementById('status-message');
-        const autoScanMessage = document.getElementById('auto-scan-message');
-        const browserWarning = document.getElementById('browser-warning');
+        const manualScanButton = document.getElementById('manual-scan-button');
+        const scanResultMessage = document.getElementById('scan-result-message');
+        const footerNote = document.getElementById('footer-note');
 
         let inspectorName = '';
 
         /**
-         * 檢查瀏覽器環境
+         * 偵測是否為 iPhone
+         * @returns {boolean}
          */
-        function checkBrowser() {
-            const ua = navigator.userAgent;
-            const isAndroid = /Android/i.test(ua);
-            const isChrome = /Chrome/i.test(ua);
-            // 如果不是 Android 上的 Chrome，就顯示警告
-            if (!isAndroid || !isChrome) {
-                browserWarning.classList.remove('hidden');
+        function isIphone() {
+            return /iPhone/i.test(navigator.userAgent);
+        }
+
+        /**
+         * 顯示掃描結果訊息
+         * @param {string} message - 要顯示的訊息
+         * @param {'success' | 'error' | 'loading'} type - 訊息類型
+         */
+        function showScanMessage(message, type) {
+            scanResultMessage.textContent = message;
+            switch (type) {
+                case 'success':
+                    scanResultMessage.className = 'text-green-400 text-2xl font-bold';
+                    break;
+                case 'error':
+                    scanResultMessage.className = 'text-red-400 text-2xl font-bold';
+                    break;
+                case 'loading':
+                    scanResultMessage.className = 'text-yellow-400 text-2xl font-bold';
+                    break;
             }
         }
 
         /**
-         * 顯示訊息並在一段時間後清除
-         * @param {string} message - 要顯示的訊息
-         * @param {boolean} isError - 是否為錯誤訊息
-         * @param {HTMLElement} element - 要顯示訊息的 HTML 元素
-         */
-        function showTemporaryMessage(message, isError = false, element = statusMessage) {
-            element.textContent = message;
-            element.className = isError 
-                ? 'text-red-400 text-2xl font-bold' 
-                : 'text-green-400 text-2xl font-bold';
-            
-            setTimeout(() => {
-                element.textContent = '';
-            }, 4000); // 4秒後清除訊息
-        }
-
-        /**
          * 更新 Firestore 中的巡檢點資料
-         * @param {string} pointId - 巡檢點 ID (從 NFC 標籤讀取)
+         * @param {string} pointId - 巡檢點 ID
          */
         async function updateInspectionPoint(pointId) {
             if (!pointId || !inspectorName) {
@@ -132,51 +119,41 @@
 
             const pointRef = doc(db, 'inspectionPoints', pointId);
             try {
-                // 隱藏手動掃描按鈕，顯示處理中訊息
-                scanButton.classList.add('hidden');
-                autoScanMessage.textContent = `正在更新 [${pointId}]...`;
-                autoScanMessage.className = 'text-yellow-400 text-2xl font-bold';
-
+                showScanMessage(`正在更新 [${pointId}]...`, 'loading');
                 await updateDoc(pointRef, {
                     status: 'inspected',
                     inspectorName: inspectorName,
                     timestamp: serverTimestamp()
                 });
                 
-                // 提供成功回饋
-                showTemporaryMessage(`[${pointId}] 已巡檢成功！`, false, autoScanMessage);
+                showScanMessage(`[${pointId}] 已巡檢成功！`, 'success');
                 if ('vibrate' in navigator) {
-                    navigator.vibrate(200); // 震動 200 毫秒
+                    navigator.vibrate(200); // 震動回饋
                 }
             } catch (error) {
                 console.error("更新 Firestore 失敗: ", error);
-                showTemporaryMessage(`更新失敗: ${pointId}`, true, autoScanMessage);
-            } finally {
-                // 4秒後顯示回手動按鈕，以備不時之需
-                setTimeout(() => {
-                    scanButton.classList.remove('hidden');
-                }, 4000);
+                showScanMessage(`更新失敗: ${pointId}`, 'error');
             }
         }
 
         /**
-         * 初始化 Web NFC 功能 (手動模式)
+         * 初始化手動 NFC 掃描功能 (僅限 Android)
          */
         function initManualNFC() {
-            if (!('NDEFReader' in window)) {
-                showTemporaryMessage("此瀏覽器不支援手動掃描", true);
-                scanButton.disabled = true;
-                scanButton.textContent = '不支援';
-                scanButton.classList.add('bg-gray-700');
-                scanButton.classList.remove('bg-cyan-600');
+            // 如果是 iPhone 或不支援 NDEFReader，則不執行任何操作
+            if (isIphone() || !('NDEFReader' in window)) {
                 return;
             }
 
-            scanButton.addEventListener('click', async () => {
+            // 顯示手動掃描按鈕和提示
+            manualScanButton.classList.remove('hidden');
+            footerNote.textContent = '若自動掃描失敗，可使用手動掃描';
+
+            manualScanButton.addEventListener('click', async () => {
                 try {
                     const reader = new NDEFReader();
                     await reader.scan();
-                    showTemporaryMessage('準備掃描...', false);
+                    showScanMessage('準備掃描...', 'loading');
 
                     reader.addEventListener('reading', ({ message }) => {
                         const record = message.records[0];
@@ -186,10 +163,9 @@
                             updateInspectionPoint(pointId);
                         }
                     });
-
                 } catch (error) {
                     console.error('啟動 NFC 掃描失敗: ', error);
-                    showTemporaryMessage('無法啟動掃描功能', true);
+                    showScanMessage('無法啟動掃描功能', 'error');
                 }
             });
         }
@@ -206,7 +182,7 @@
                 displayInspectorName.textContent = name;
                 nameInputSection.classList.add('hidden');
                 scannerSection.classList.remove('hidden');
-                if (callback) callback(); // 如果有回呼函式，就執行它
+                if (callback) callback();
             } else {
                 alert('請輸入您的姓名或工號');
             }
@@ -214,7 +190,6 @@
 
         // 頁面載入時的初始化邏輯
         function initialize() {
-            checkBrowser();
             const savedName = localStorage.getItem('inspectorName');
             const urlParams = new URLSearchParams(window.location.search);
             const pointIdFromUrl = urlParams.get('id');
@@ -226,19 +201,17 @@
                 scannerSection.classList.remove('hidden');
 
                 if (pointIdFromUrl) {
-                    // 如果有姓名且網址有 ID，直接更新
                     updateInspectionPoint(pointIdFromUrl);
+                } else {
+                    showScanMessage('請靠近 NFC 標籤開始巡檢', 'loading');
                 }
             } else {
-                // 如果沒有儲存姓名
                 nameInputSection.classList.remove('hidden');
                 scannerSection.classList.add('hidden');
             }
             
-            // 綁定事件
             saveNameButton.addEventListener('click', () => {
                 handleNameSetup(() => {
-                    // 儲存姓名後，檢查網址是否帶有 ID，若有則立即更新
                     if (pointIdFromUrl) {
                         updateInspectionPoint(pointIdFromUrl);
                     }
@@ -252,12 +225,10 @@
 
             changeNameButton.addEventListener('click', () => {
                 localStorage.removeItem('inspectorName');
-                nameInputSection.classList.remove('hidden');
-                scannerSection.classList.add('hidden');
-                inspectorNameInput.value = '';
+                window.location.reload(); // 重新載入頁面以返回姓名輸入
             });
 
-            // 初始化手動掃描模式作為備用
+            // 初始化手動掃描(如果適用)
             initManualNFC();
         }
 
