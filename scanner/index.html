@@ -2,62 +2,54 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>廠區設備巡檢儀表板</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>NFC 巡檢掃描</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Noto Sans TC', sans-serif; }
-        #modal-body::-webkit-scrollbar { width: 8px; }
-        #modal-body::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 10px; }
-        #modal-body::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+        html, body { height: 100%; -webkit-tap-highlight-color: transparent; }
+        .loader {
+            width: 80px; height: 80px; border-radius: 50%; position: relative; animation: rotate 1s linear infinite;
+        }
+        .loader::before, .loader::after {
+            content: ""; box-sizing: border-box; position: absolute; inset: 0px; border-radius: 50%;
+            border: 5px solid #FFF; animation: prixClipFix 2s linear infinite;
+        }
+        .loader::after {
+            border-color: #3b82f6; animation: prixClipFix 2s linear infinite, rotate 0.5s linear infinite reverse; inset: 6px;
+        }
+        @keyframes rotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes prixClipFix {
+            0% { clip-path: polygon(50% 50%, 0 0, 0 0, 0 0, 0 0, 0 0); }
+            25% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 0, 100% 0, 100% 0); }
+            50% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 100% 100%, 100% 100%); }
+            75% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 100%); }
+            100% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 0); }
+        }
     </style>
 </head>
-<body class="bg-slate-100 font-sans">
+<body class="bg-black text-white flex flex-col items-center justify-center h-full font-sans p-4">
 
-    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl sm:text-4xl font-bold text-slate-800">廠區設備巡檢儀表板</h1>
-            <p class="text-slate-500 mt-2">Real-time Monitoring Dashboard</p>
-        </header>
-
-        <!-- **新增**：待處理異常回報區 -->
-        <section id="abnormal-reports-section" class="mb-8 hidden">
-             <h2 class="text-2xl font-bold text-slate-800 mb-4 border-b-2 border-red-500 pb-2 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-red-500 mr-3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                待處理異常回報
-            </h2>
-            <div id="abnormal-reports-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- 異常回報卡片將動態生成 -->
-            </div>
-        </section>
-
-        <div class="flex justify-end mb-6">
-            <button id="reset-button" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-5 rounded-lg">重置所有狀態</button>
-        </div>
-
-        <div id="dashboard-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            <!-- 巡檢點卡片將動態生成 -->
-        </div>
-    </div>
-
-    <!-- 通用歷史紀錄 Modal -->
-    <div id="history-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <header class="flex items-center justify-between p-5 border-b">
-                <h2 id="history-modal-title" class="text-xl font-bold">巡檢紀錄</h2>
-                <button id="close-modal-button" class="text-slate-400 hover:text-slate-800 text-3xl">&times;</button>
-            </header>
-            <main id="modal-body" class="p-6 overflow-y-auto space-y-4 bg-slate-50"></main>
+    <div id="message-container" class="text-center flex flex-col items-center space-y-6 w-full max-w-md">
+        <div class="loader"></div>
+        <p id="main-message" class="text-xl text-gray-300">正在處理巡檢點...</p>
+        
+        <!-- 異常回報區塊 (預設隱藏) -->
+        <div id="abnormal-report-section" class="hidden w-full bg-gray-900 p-4 rounded-lg border border-gray-700 text-left">
+            <h3 class="text-lg font-bold text-yellow-400 mb-3">回報異常狀況</h3>
+            <textarea id="report-description" class="w-full bg-gray-800 text-white p-2 rounded-md border border-gray-600 focus:ring-2 focus:ring-yellow-500 focus:outline-none" rows="3" placeholder="請在此描述異常狀況..."></textarea>
+            <input type="file" id="report-photo" accept="image/*,video/*" capture="environment" class="hidden">
+            <button id="report-photo-button" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md transition-colors">拍攝照片/影片</button>
+            <img id="report-photo-preview" class="hidden w-full rounded-md my-3">
+            <button id="submit-report-button" class="w-full mt-3 bg-yellow-600 hover:bg-yellow-700 text-black font-bold py-2 px-3 rounded-md transition-colors">提交回報</button>
+            <p id="report-status" class="text-center mt-2 h-5"></p>
         </div>
     </div>
 
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, updateDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCux2MYcB_BgeCxTIu_gGzezkqYZFHO8RQ",
@@ -68,176 +60,142 @@
             appId: "1:386322024576:web:fdb68ed57b162987487e65",
             measurementId: "G-HKPEP59T1P"
         };
+        
+        const mainMessage = document.getElementById('main-message');
+        const reportSection = document.getElementById('abnormal-report-section');
+        let db, auth, inspectorName, pointId, pointName; // 提升為全域變數
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-
-        const inspectionPoints = [
-            { id: 'crane-1', name: '天車-1' }, { id: 'crane-2', name: '天車-2' }, { id: 'crane-3', name: '天車-3' }, { id: 'crane-4', name: '天車-4' }, { id: 'crane-5', name: '天車-5' }, { id: 'hook-safety', name: '吊鉤安全高度' }, { id: 'emergency-stop', name: '急停開關' }, { id: 'acetylene', name: '乙炔存放區' }, { id: 'factory-lights', name: '工廠電燈' }
-        ];
-
-        const grid = document.getElementById('dashboard-grid');
-        const historyModal = document.getElementById('history-modal');
-        const closeModalButton = document.getElementById('close-modal-button');
-        const modalBody = document.getElementById('modal-body');
-        const modalTitle = document.getElementById('history-modal-title');
-        const abnormalSection = document.getElementById('abnormal-reports-section');
-        const abnormalGrid = document.getElementById('abnormal-reports-grid');
-
-        let openAbnormalReports = []; // 儲存待處理的異常報告
-
-        function renderDashboard(pointsData) {
-            grid.innerHTML = '';
-            const dataMap = pointsData.reduce((map, item) => ({...map, [item.id]: item }), {});
-
-            inspectionPoints.forEach(point => {
-                const data = dataMap[point.id] || {};
-                const hasAbnormalReport = openAbnormalReports.some(report => report.pointId === point.id);
-                const status = data.status || 'pending';
-                const inspectorName = data.inspectorName || '---';
-                let timestamp = '---';
-                if (data.timestamp?.toDate) timestamp = data.timestamp.toDate().toLocaleString('zh-TW', { hour12: false });
-
-                const isInspected = status === 'inspected';
-                const statusBgColor = isInspected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-                const statusText = isInspected ? '已巡檢' : '待巡檢';
-                let borderColor = isInspected ? 'border-green-500' : 'border-red-500';
-                if(hasAbnormalReport) borderColor = 'border-yellow-500 ring-4 ring-yellow-300'; // **新增**：有異常時顯示黃色外框
-
-                const detailsButtonHTML = `<button data-id="${point.id}" data-name="${point.name}" class="view-details-button mt-4 w-full bg-slate-700 hover:bg-slate-800 text-white text-sm py-2 px-3 rounded-md">查看紀錄</button>`;
-
-                const cardHTML = `
-                    <div class="bg-white rounded-lg border-t-4 ${borderColor} shadow-sm p-5 flex flex-col justify-between">
-                        <div>
-                            <h2 class="text-lg font-bold text-slate-800 mb-3">${point.name}</h2>
-                            <div class="flex items-center mb-4">
-                                <span class="font-semibold px-3 py-1 rounded-full text-xs ${statusBgColor}">${statusText}</span>
-                            </div>
-                        </div>
-                        <div class="text-sm text-slate-500 space-y-1">
-                            <p>巡檢員: <span class="font-medium text-slate-700">${inspectorName}</span></p>
-                            <p>時間: <span class="font-medium text-slate-700">${timestamp}</span></p>
-                            ${detailsButtonHTML}
-                        </div>
-                    </div>`;
-                grid.insertAdjacentHTML('beforeend', cardHTML);
-            });
-
-            document.querySelectorAll('.view-details-button').forEach(button => {
-                button.addEventListener('click', () => openHistoryModal(button.dataset.id, button.dataset.name));
+        // 圖片壓縮函式
+        function compressImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = event => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const scaleSize = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scaleSize;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.7));
+                    };
+                    img.onerror = reject;
+                };
+                reader.onerror = reject;
             });
         }
 
-        // **新增**：渲染異常回報卡片
-        function renderAbnormalReports(reports) {
-            openAbnormalReports = reports; // 更新全域變數
-            if (reports.length === 0) {
-                abnormalSection.classList.add('hidden');
+        async function handleStandardInspection() {
+            const pointRef = doc(db, 'inspectionPoints', pointId);
+            try {
+                mainMessage.textContent = `正在更新 [${pointId}]...`;
+                await updateDoc(pointRef, { status: 'inspected', inspectorName, timestamp: serverTimestamp() });
+                await addDoc(collection(db, 'standard_inspection_log'), { pointId, inspectorName, timestamp: serverTimestamp() });
+                
+                mainMessage.textContent = `[${pointId}] 已巡檢成功！`;
+                mainMessage.parentElement.querySelector('.loader').style.display = 'none';
+                mainMessage.className = 'text-2xl text-green-400';
+                if ('vibrate' in navigator) navigator.vibrate(200);
+
+                // **新增**：顯示回報異常按鈕
+                const reportButton = document.createElement('button');
+                reportButton.textContent = '回報異常狀況';
+                reportButton.className = 'mt-6 bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded-lg transition-colors';
+                reportButton.onclick = () => {
+                    reportSection.classList.remove('hidden');
+                    reportButton.style.display = 'none'; // 點擊後隱藏自己
+                };
+                mainMessage.parentElement.appendChild(reportButton);
+
+            } catch (error) {
+                mainMessage.textContent = `更新失敗: ${error.code || error.message}`;
+                mainMessage.parentElement.querySelector('.loader').style.display = 'none';
+                mainMessage.className = 'text-xl text-red-400';
+            }
+        }
+        
+        async function submitAbnormalReport(description, compressedBase64) {
+            const reportStatus = document.getElementById('report-status');
+            reportStatus.textContent = '正在提交回報...';
+            reportStatus.className = 'text-center mt-2 h-5 text-yellow-400';
+            try {
+                await addDoc(collection(db, 'abnormal_reports'), {
+                    pointId,
+                    pointName: pointId, // 暫時用 ID 作為名稱
+                    inspectorName,
+                    description,
+                    imageBase64: compressedBase64,
+                    timestamp: serverTimestamp(),
+                    status: 'reported'
+                });
+                reportStatus.textContent = '異常回報成功！';
+                reportStatus.className = 'text-center mt-2 h-5 text-green-400';
+                reportSection.style.display = 'none'; // 成功後隱藏回報區
+            } catch (error) {
+                reportStatus.textContent = `提交失敗: ${error.message}`;
+                reportStatus.className = 'text-center mt-2 h-5 text-red-400';
+            }
+        }
+
+        async function main() {
+            if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                mainMessage.textContent = 'Firebase 設定錯誤！';
                 return;
             }
-            abnormalSection.classList.remove('hidden');
-            abnormalGrid.innerHTML = '';
-            reports.forEach(report => {
-                const formattedTime = report.timestamp.toDate().toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' });
-                const imageHTML = report.imageBase64 ? `<img src="${report.imageBase64}" class="w-full h-auto rounded-md mt-2 border">` : '';
-
-                const reportCard = `
-                    <div class="bg-white rounded-lg border-l-4 border-red-500 shadow-md p-4">
-                        <div class="mb-2">
-                            <h3 class="font-bold text-lg text-red-700">${report.pointName}</h3>
-                            <p class="text-sm text-slate-500">${formattedTime}</p>
-                        </div>
-                        <p class="text-slate-800 bg-slate-100 p-2 rounded-md">${report.description}</p>
-                        ${imageHTML}
-                        <div class="mt-3 text-right text-sm">
-                            <span class="font-semibold">${report.inspectorName}</span> 回報
-                        </div>
-                    </div>
-                `;
-                abnormalGrid.insertAdjacentHTML('beforeend', reportCard);
-            });
+            const urlParams = new URLSearchParams(window.location.search);
+            pointId = urlParams.get('id');
+            if (!pointId) {
+                mainMessage.textContent = '無效的巡檢點 ID。';
+                return;
+            }
+            if (pointId === 'acetylene') {
+                window.location.href = `acetylene.html${window.location.search}`;
+                return;
+            }
+            inspectorName = localStorage.getItem('inspectorName');
+            if (!inspectorName) {
+                alert('找不到巡檢員姓名，請先完成簽名設定。');
+                return;
+            }
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                await signInAnonymously(auth);
+                await handleStandardInspection();
+            } catch (error) {
+                mainMessage.textContent = `連線失敗: ${error.code || error.message}`;
+            }
         }
 
-        function listenForUpdates() {
-            onSnapshot(collection(db, 'inspectionPoints'), (snapshot) => {
-                const pointsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderDashboard(pointsData); // 重新渲染主儀表板以更新外框
-            });
+        // 綁定回報區事件
+        const reportPhotoInput = document.getElementById('report-photo');
+        const reportPhotoPreview = document.getElementById('report-photo-preview');
+        let reportPhotoBase64 = null;
 
-            // **新增**：監聽異常回報
-            const q = query(collection(db, 'abnormal_reports'), where("status", "==", "reported"));
-            onSnapshot(q, (snapshot) => {
-                const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                reports.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
-                renderAbnormalReports(reports);
-                // 觸發一次主儀表板重繪，以更新異常狀態外框
-                listenForUpdates();
-            });
-        }
-
-        async function resetAllStatus() { 
-            if (!confirm('您確定要重置所有巡檢點的狀態嗎？此操作無法復原。')) return;
-            try {
-                const batch = writeBatch(db);
-                inspectionPoints.forEach(point => {
-                    const pointRef = doc(db, 'inspectionPoints', point.id);
-                    batch.set(pointRef, { name: point.name, status: 'pending', inspectorName: null, timestamp: null });
-                });
-                await batch.commit();
-                alert('所有巡檢點狀態已成功重置！');
-            } catch (error) {
-                console.error("重置狀態時發生錯誤: ", error);
-                alert('重置失敗，請檢查控制台錯誤訊息。');
+        document.getElementById('report-photo-button').onclick = () => reportPhotoInput.click();
+        reportPhotoInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                reportPhotoPreview.src = URL.createObjectURL(file);
+                reportPhotoPreview.classList.remove('hidden');
+                reportPhotoBase64 = await compressImage(file);
             }
-         }
-        async function openHistoryModal(pointId, pointName) { 
-            modalTitle.textContent = `${pointName} - 7 日巡檢紀錄`;
-            historyModal.classList.remove('hidden');
-            modalBody.innerHTML = '<p class="text-slate-500 text-center">正在載入紀錄...</p>';
-            const logCollectionName = pointId === 'acetylene' ? 'acetylene_log' : 'standard_inspection_log';
-            const logCollectionRef = collection(db, logCollectionName);
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            let q = pointId === 'acetylene'
-                ? query(logCollectionRef, where("timestamp", ">=", sevenDaysAgo))
-                : query(logCollectionRef, where("pointId", "==", pointId), where("timestamp", ">=", sevenDaysAgo));
-            try {
-                const querySnapshot = await getDocs(q);
-                let logs = querySnapshot.docs.map(doc => doc.data()).filter(log => log.timestamp);
-                logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
-                if (logs.length === 0) {
-                    modalBody.innerHTML = '<p class="text-slate-500 text-center">最近 7 日無巡檢紀錄。</p>';
-                    return;
-                }
-                modalBody.innerHTML = '';
-                logs.forEach(log => {
-                    const formattedTime = log.timestamp.toDate().toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short', hour12: false });
-                    const imageHTML = log.imageBase64 ? `<img src="${log.imageBase64}" alt="巡檢照片" class="w-full h-auto rounded-md mt-2 border border-slate-200">` : '';
-                    const logElement = document.createElement('div');
-                    logElement.className = 'border border-slate-200 p-4 rounded-lg bg-white';
-                    logElement.innerHTML = `
-                        <div class="flex justify-between items-center mb-2">
-                            <p class="font-bold text-lg text-slate-800">${log.inspectorName}</p>
-                            <p class="text-sm text-slate-500">${formattedTime}</p>
-                        </div>
-                        ${imageHTML}
-                    `;
-                    modalBody.appendChild(logElement);
-                });
-            } catch (error) {
-                console.error("讀取歷史紀錄失敗:", error);
-                modalBody.innerHTML = `<p class="text-red-500 text-center">讀取紀錄失敗: ${error.message}</p>`;
+        };
+        document.getElementById('submit-report-button').onclick = () => {
+            const description = document.getElementById('report-description').value;
+            if (!description) {
+                alert('請填寫狀況描述！');
+                return;
             }
-         }
-        function closeModal() { 
-            historyModal.classList.add('hidden');
-         }
+            submitAbnormalReport(description, reportPhotoBase64);
+        };
 
-        document.getElementById('reset-button').addEventListener('click', resetAllStatus);
-        closeModalButton.addEventListener('click', closeModal);
-        historyModal.addEventListener('click', (e) => { if (e.target === historyModal) closeModal(); });
-
-        listenForUpdates();
+        main();
     </script>
 </body>
 </html>
