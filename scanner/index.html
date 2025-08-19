@@ -6,32 +6,18 @@
     <title>NFC 巡檢掃描</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        html, body { height: 100%; }
+        html, body { height: 100%; -webkit-tap-highlight-color: transparent; }
         .loader {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            position: relative;
-            animation: rotate 1s linear infinite;
+            width: 80px; height: 80px; border-radius: 50%; position: relative; animation: rotate 1s linear infinite;
         }
         .loader::before, .loader::after {
-            content: "";
-            box-sizing: border-box;
-            position: absolute;
-            inset: 0px;
-            border-radius: 50%;
-            border: 5px solid #FFF;
-            animation: prixClipFix 2s linear infinite;
+            content: ""; box-sizing: border-box; position: absolute; inset: 0px; border-radius: 50%;
+            border: 5px solid #FFF; animation: prixClipFix 2s linear infinite;
         }
         .loader::after {
-            border-color: #3b82f6;
-            animation: prixClipFix 2s linear infinite, rotate 0.5s linear infinite reverse;
-            inset: 6px;
+            border-color: #3b82f6; animation: prixClipFix 2s linear infinite, rotate 0.5s linear infinite reverse; inset: 6px;
         }
-        @keyframes rotate {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        @keyframes rotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes prixClipFix {
             0% { clip-path: polygon(50% 50%, 0 0, 0 0, 0 0, 0 0, 0 0); }
             25% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 0, 100% 0, 100% 0); }
@@ -43,9 +29,20 @@
 </head>
 <body class="bg-black text-white flex flex-col items-center justify-center h-full font-sans p-4">
 
-    <div id="message-container" class="text-center flex flex-col items-center space-y-6">
+    <div id="message-container" class="text-center flex flex-col items-center space-y-6 w-full max-w-md">
         <div class="loader"></div>
         <p id="main-message" class="text-xl text-gray-300">正在處理巡檢點...</p>
+        
+        <!-- **新增**：異常回報區塊 (預設隱藏) -->
+        <div id="abnormal-report-section" class="hidden w-full bg-gray-900 p-4 rounded-lg border border-gray-700 text-left">
+            <h3 class="text-lg font-bold text-yellow-400 mb-3">回報異常狀況</h3>
+            <textarea id="report-description" class="w-full bg-gray-800 text-white p-2 rounded-md border border-gray-600 focus:ring-2 focus:ring-yellow-500 focus:outline-none" rows="3" placeholder="請在此描述異常狀況..."></textarea>
+            <input type="file" id="report-photo" accept="image/*" capture="environment" class="hidden">
+            <button id="report-photo-button" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md transition-colors">拍攝照片/影片</button>
+            <img id="report-photo-preview" class="hidden w-full rounded-md my-3">
+            <button id="submit-report-button" class="w-full mt-3 bg-yellow-600 hover:bg-yellow-700 text-black font-bold py-2 px-3 rounded-md transition-colors">提交回報</button>
+            <p id="report-status" class="text-center mt-2 h-5"></p>
+        </div>
     </div>
 
     <!-- Firebase SDK -->
@@ -65,67 +62,139 @@
         };
         
         const mainMessage = document.getElementById('main-message');
+        const reportSection = document.getElementById('abnormal-report-section');
+        let db, auth, inspectorName, pointId, pointName; // 提升為全域變數
 
-        async function handleStandardInspection(db, pointId, inspectorName) {
+        // 圖片壓縮函式
+        function compressImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = event => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const scaleSize = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scaleSize;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.7));
+                    };
+                    img.onerror = reject;
+                };
+                reader.onerror = reject;
+            });
+        }
+
+        async function handleStandardInspection() {
             const pointRef = doc(db, 'inspectionPoints', pointId);
             try {
                 mainMessage.textContent = `正在更新 [${pointId}]...`;
-                await updateDoc(pointRef, {
-                    status: 'inspected',
-                    inspectorName: inspectorName,
-                    timestamp: serverTimestamp()
-                });
-                const logCollection = collection(db, 'standard_inspection_log');
-                await addDoc(logCollection, {
-                    pointId: pointId,
-                    inspectorName: inspectorName,
-                    timestamp: serverTimestamp()
-                });
+                await updateDoc(pointRef, { status: 'inspected', inspectorName, timestamp: serverTimestamp() });
+                await addDoc(collection(db, 'standard_inspection_log'), { pointId, inspectorName, timestamp: serverTimestamp() });
+                
                 mainMessage.textContent = `[${pointId}] 已巡檢成功！`;
                 mainMessage.parentElement.querySelector('.loader').style.display = 'none';
                 mainMessage.className = 'text-2xl text-green-400';
                 if ('vibrate' in navigator) navigator.vibrate(200);
+
+                // **新增**：顯示回報異常按鈕
+                const reportButton = document.createElement('button');
+                reportButton.textContent = '回報異常狀況';
+                reportButton.className = 'mt-6 bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded-lg transition-colors';
+                reportButton.onclick = () => {
+                    reportSection.classList.remove('hidden');
+                    reportButton.style.display = 'none'; // 點擊後隱藏自己
+                };
+                mainMessage.parentElement.appendChild(reportButton);
+
             } catch (error) {
                 mainMessage.textContent = `更新失敗: ${error.code || error.message}`;
                 mainMessage.parentElement.querySelector('.loader').style.display = 'none';
                 mainMessage.className = 'text-xl text-red-400';
             }
         }
+        
+        async function submitAbnormalReport(description, compressedBase64) {
+            const reportStatus = document.getElementById('report-status');
+            reportStatus.textContent = '正在提交回報...';
+            reportStatus.className = 'text-center mt-2 h-5 text-yellow-400';
+            try {
+                await addDoc(collection(db, 'abnormal_reports'), {
+                    pointId,
+                    pointName: pointId, // 暫時用 ID 作為名稱
+                    inspectorName,
+                    description,
+                    imageBase64: compressedBase64,
+                    timestamp: serverTimestamp(),
+                    status: 'reported'
+                });
+                reportStatus.textContent = '異常回報成功！';
+                reportStatus.className = 'text-center mt-2 h-5 text-green-400';
+                reportSection.style.display = 'none'; // 成功後隱藏回報區
+            } catch (error) {
+                reportStatus.textContent = `提交失敗: ${error.message}`;
+                reportStatus.className = 'text-center mt-2 h-5 text-red-400';
+            }
+        }
 
         async function main() {
             if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
                 mainMessage.textContent = 'Firebase 設定錯誤！';
-                mainMessage.className = 'text-xl text-red-400';
                 return;
             }
             const urlParams = new URLSearchParams(window.location.search);
-            const pointId = urlParams.get('id');
+            pointId = urlParams.get('id');
             if (!pointId) {
                 mainMessage.textContent = '無效的巡檢點 ID。';
                 return;
             }
             if (pointId === 'acetylene') {
-                mainMessage.textContent = '偵測到乙炔存放區，正在導向專用頁面...';
                 window.location.href = `acetylene.html${window.location.search}`;
                 return;
             }
-            const inspectorName = localStorage.getItem('inspectorName');
+            inspectorName = localStorage.getItem('inspectorName');
             if (!inspectorName) {
                 alert('找不到巡檢員姓名，請先完成簽名設定。');
-                mainMessage.textContent = '找不到巡檢員姓名。';
                 return;
             }
             try {
                 const app = initializeApp(firebaseConfig);
-                const db = getFirestore(app);
-                const auth = getAuth(app);
+                db = getFirestore(app);
+                auth = getAuth(app);
                 await signInAnonymously(auth);
-                await handleStandardInspection(db, pointId, inspectorName);
+                await handleStandardInspection();
             } catch (error) {
                 mainMessage.textContent = `連線失敗: ${error.code || error.message}`;
-                mainMessage.className = 'text-xl text-red-400';
             }
         }
+
+        // 綁定回報區事件
+        const reportPhotoInput = document.getElementById('report-photo');
+        const reportPhotoPreview = document.getElementById('report-photo-preview');
+        let reportPhotoBase64 = null;
+
+        document.getElementById('report-photo-button').onclick = () => reportPhotoInput.click();
+        reportPhotoInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                reportPhotoPreview.src = URL.createObjectURL(file);
+                reportPhotoPreview.classList.remove('hidden');
+                reportPhotoBase64 = await compressImage(file);
+            }
+        };
+        document.getElementById('submit-report-button').onclick = () => {
+            const description = document.getElementById('report-description').value;
+            if (!description) {
+                alert('請填寫狀況描述！');
+                return;
+            }
+            submitAbnormalReport(description, reportPhotoBase64);
+        };
+
         main();
     </script>
 </body>
