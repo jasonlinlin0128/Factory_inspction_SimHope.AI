@@ -5,7 +5,7 @@ const axios = require('axios');
 admin.initializeApp();
 
 // 直接寫入 LINE Token（私有專案適用）
-const LINE_TOKEN = '0VfTCBVW7v4LyTT0AlWKkrLxz11w6nR8kw8VDv3KlqAMr/Ia8DAoxIH96dz711qwY/nECvKl4x8oV3EzXQ9bIfmCLbqSK7y8MV4UiacHeDcnS8vdwOOQYY7/GfyAaEMHAsW++TRW/C9mhL4xwYMqYQdB04t89/1O/w1cDnyilFU=';
+const LINE_TOKEN = 'c+EUNkjk5UErAmmB9wysCtztPsxWjmc5/LeJIwAhuTVlhP2Q6zamu991UlncDfPkY/nECvKl4x8oV3EzXQ9bIfmCLbqSK7y8MV4UiacHeDfE1RPiPK4ONIwcXa/NGI/3fkvbXEXFh7k59BjWZnTybgdB04t89/1O/w1cDnyilFU=';
 
 /**
  * 發送 LINE Notify 通知
