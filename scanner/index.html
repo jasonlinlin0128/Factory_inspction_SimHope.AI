@@ -142,6 +142,8 @@
                 const pointsMap = {
                     'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
                     'crane-4': '天車-4', 'crane-5': '天車-5',
+                    'acetylene': '乙炔區',
+                    'air-compressor': '空壓機',
                     'hook-safety': '吊鉤安全高度',
                     'emergency-stop': '急停開關',
                     'factory-lights': '工廠電燈'
@@ -262,11 +264,6 @@
                 return; // 結束執行，等待跳轉
             }
 
-            if (pointId === 'acetylene') {
-                window.location.href = `acetylene.html${window.location.search}`;
-                return;
-            }
-            
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);

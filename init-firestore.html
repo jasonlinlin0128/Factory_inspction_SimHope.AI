@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>初始化 Firestore 資料</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 p-8">
+    <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-6">
+        <h1 class="text-2xl font-bold mb-4 text-slate-800">初始化 Firestore 資料</h1>
+        <p class="text-slate-600 mb-6">此工具會在 Firestore 中建立所有必要的巡檢點資料。</p>
+
+        <div id="status" class="mb-4 p-4 rounded-md hidden"></div>
+
+        <button id="init-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+            開始初始化資料
+        </button>
+
+        <div id="progress" class="mt-6 hidden">
+            <h2 class="font-bold mb-2">進度：</h2>
+            <ul id="progress-list" class="space-y-1 text-sm"></ul>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
+            authDomain: "factory-inspection-system.firebaseapp.com",
+            projectId: "factory-inspection-system",
+            storageBucket: "factory-inspection-system.firebasestorage.app",
+            messagingSenderId: "1094359521084",
+            appId: "1:1094359521084:web:f24d8dd4fd68c3e670f039",
+            measurementId: "G-MJ417JZWR6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        const statusDiv = document.getElementById('status');
+        const progressDiv = document.getElementById('progress');
+        const progressList = document.getElementById('progress-list');
+        const initBtn = document.getElementById('init-btn');
+
+        function showStatus(message, type = 'info') {
+            statusDiv.className = `mb-4 p-4 rounded-md ${
+                type === 'success' ? 'bg-green-100 text-green-800' :
+                type === 'error' ? 'bg-red-100 text-red-800' :
+                'bg-blue-100 text-blue-800'
+            }`;
+            statusDiv.textContent = message;
+            statusDiv.classList.remove('hidden');
+        }
+
+        function addProgress(message, success = true) {
+            const li = document.createElement('li');
+            li.className = success ? 'text-green-600' : 'text-red-600';
+            li.textContent = `${success ? '✓' : '✗'} ${message}`;
+            progressList.appendChild(li);
+        }
+
+        async function initializeFirestore() {
+            try {
+                initBtn.disabled = true;
+                initBtn.textContent = '初始化中...';
+                showStatus('正在連接 Firebase...', 'info');
+                progressDiv.classList.remove('hidden');
+                progressList.innerHTML = '';
+
+                // 匿名登入
+                await signInAnonymously(auth);
+                addProgress('Firebase 認證成功');
+
+                // 定義所有巡檢點（共 10 個）
+                const inspectionPoints = [
+                    { id: 'crane-1', name: '天車-1', type: 'standard' },
+                    { id: 'crane-2', name: '天車-2', type: 'standard' },
+                    { id: 'crane-3', name: '天車-3', type: 'standard' },
+                    { id: 'crane-4', name: '天車-4', type: 'standard' },
+                    { id: 'crane-5', name: '天車-5', type: 'standard' },
+                    { id: 'acetylene', name: '乙炔區', type: 'standard' },
+                    { id: 'air-compressor', name: '空壓機', type: 'standard' },
+                    { id: 'hook-safety', name: '吊鉤安全高度', type: 'standard' },
+                    { id: 'emergency-stop', name: '急停開關', type: 'standard' },
+                    { id: 'factory-lights', name: '工廠電燈', type: 'standard' }
+                ];
+
+                // 建立每個巡檢點
+                for (const point of inspectionPoints) {
+                    const pointRef = doc(db, 'inspectionPoints', point.id);
+                    await setDoc(pointRef, {
+                        name: point.name,
+                        type: point.type,
+                        status: 'not_inspected',
+                        inspectorName: null,
+                        timestamp: null,
+                        createdAt: serverTimestamp()
+                    });
+                    addProgress(`建立巡檢點：${point.name} (${point.id})`);
+                }
+
+                showStatus('✓ 所有資料初始化完成！', 'success');
+                initBtn.textContent = '初始化完成';
+
+            } catch (error) {
+                console.error('初始化失敗:', error);
+                showStatus(`初始化失敗: ${error.message}`, 'error');
+                addProgress(`錯誤: ${error.message}`, false);
+                initBtn.disabled = false;
+                initBtn.textContent = '重試初始化';
+            }
+        }
+
+        initBtn.addEventListener('click', initializeFirestore);
+    </script>
+</body>
+</html>
