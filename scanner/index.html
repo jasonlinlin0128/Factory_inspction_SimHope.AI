@@ -65,6 +65,33 @@
         const reportSection = document.getElementById('abnormal-report-section');
         let db, auth, inspectorName, pointId, pointName;
 
+        // 獲取裝置資訊
+        function getDeviceInfo() {
+            const ua = navigator.userAgent;
+            let browser = 'Unknown';
+            let os = 'Unknown';
+
+            // 偵測瀏覽器
+            if (ua.indexOf('Chrome') > -1 && ua.indexOf('Edg') === -1) browser = 'Chrome';
+            else if (ua.indexOf('Edg') > -1) browser = 'Edge';
+            else if (ua.indexOf('Safari') > -1) browser = 'Safari';
+            else if (ua.indexOf('Firefox') > -1) browser = 'Firefox';
+
+            // 偵測作業系統
+            if (ua.indexOf('Android') > -1) os = 'Android';
+            else if (ua.indexOf('iPhone') > -1 || ua.indexOf('iPad') > -1) os = 'iOS';
+            else if (ua.indexOf('Windows') > -1) os = 'Windows';
+            else if (ua.indexOf('Mac') > -1) os = 'macOS';
+            else if (ua.indexOf('Linux') > -1) os = 'Linux';
+
+            return {
+                browser: browser,
+                os: os,
+                userAgent: ua,
+                timestamp: new Date().toISOString()
+            };
+        }
+
         function compressImage(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -90,10 +117,21 @@
 
         async function handleStandardInspection() {
             const pointRef = doc(db, 'inspectionPoints', pointId);
+            const deviceInfo = getDeviceInfo();
             try {
                 mainMessage.textContent = `正在更新 [${pointId}]...`;
-                await updateDoc(pointRef, { status: 'inspected', inspectorName, timestamp: serverTimestamp() });
-                await addDoc(collection(db, 'standard_inspection_log'), { pointId, inspectorName, timestamp: serverTimestamp() });
+                await updateDoc(pointRef, {
+                    status: 'inspected',
+                    inspectorName,
+                    timestamp: serverTimestamp(),
+                    deviceInfo: deviceInfo
+                });
+                await addDoc(collection(db, 'standard_inspection_log'), {
+                    pointId,
+                    inspectorName,
+                    timestamp: serverTimestamp(),
+                    deviceInfo: deviceInfo
+                });
                 mainMessage.textContent = `[${pointId}] 已巡檢成功！`;
                 mainMessage.parentElement.querySelector('.loader').style.display = 'none';
                 mainMessage.className = 'text-2xl text-green-400';
@@ -149,6 +187,8 @@
                     'factory-lights': '工廠電燈'
                 };
 
+                const deviceInfo = getDeviceInfo();
+
                 await addDoc(collection(db, 'abnormal_reports'), {
                     pointId: pointId,
                     pointName: pointsMap[pointId] || pointId,
@@ -161,7 +201,8 @@
                     resolvedAt: null,
                     resolution: null,
                     notificationSent: false,
-                    resolutionNotificationSent: false
+                    resolutionNotificationSent: false,
+                    deviceInfo: deviceInfo
                 });
 
                 reportStatus.textContent = '異常回報成功！主管已收到 LINE 通知。';

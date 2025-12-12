@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>廠區設備巡檢儀表板</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
@@ -23,7 +24,16 @@
             <p class="text-slate-500 mt-2">Real-time Monitoring Dashboard</p>
         </header>
 
-        <!-- **新增**：待處理異常回報區 -->
+        <div class="flex justify-between items-center mb-6">
+            <button id="export-excel-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-5 rounded-lg">匯出 Excel 報表</button>
+            <button id="reset-button" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-5 rounded-lg">重置所有狀態</button>
+        </div>
+
+        <div id="dashboard-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-8">
+            <!-- 巡檢點卡片將動態生成 -->
+        </div>
+
+        <!-- 待處理異常回報區（移到儀表板下方） -->
         <section id="abnormal-reports-section" class="mb-8 hidden">
              <h2 class="text-2xl font-bold text-slate-800 mb-4 border-b-2 border-red-500 pb-2 flex items-center">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-red-500 mr-3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
@@ -33,14 +43,6 @@
                 <!-- 異常回報卡片將動態生成 -->
             </div>
         </section>
-
-        <div class="flex justify-end mb-6">
-            <button id="reset-button" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-5 rounded-lg">重置所有狀態</button>
-        </div>
-
-        <div id="dashboard-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            <!-- 巡檢點卡片將動態生成 -->
-        </div>
     </div>
 
     <!-- 通用歷史紀錄 Modal -->
@@ -98,6 +100,14 @@
                 let timestamp = '---';
                 if (data.timestamp?.toDate) timestamp = data.timestamp.toDate().toLocaleString('zh-TW', { hour12: false });
 
+                // 裝置資訊
+                const deviceInfo = data.deviceInfo || null;
+                let deviceHTML = '';
+                if (deviceInfo) {
+                    const deviceIcon = deviceInfo.os === 'Android' ? '📱' : deviceInfo.os === 'iOS' ? '🍎' : '💻';
+                    deviceHTML = `<p>裝置: <span class="font-medium text-slate-700">${deviceIcon} ${deviceInfo.os} / ${deviceInfo.browser}</span></p>`;
+                }
+
                 const isInspected = status === 'inspected';
                 const statusBgColor = isInspected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
                 const statusText = isInspected ? '已巡檢' : '待巡檢';
@@ -117,6 +127,7 @@
                         <div class="text-sm text-slate-500 space-y-1">
                             <p>巡檢員: <span class="font-medium text-slate-700">${inspectorName}</span></p>
                             <p>時間: <span class="font-medium text-slate-700">${timestamp}</span></p>
+                            ${deviceHTML}
                             ${detailsButtonHTML}
                         </div>
                     </div>`;
@@ -322,6 +333,96 @@
         resolveModal.addEventListener('click', (e) => {
             if (e.target === resolveModal) closeResolveModalHandler();
         });
+
+        // Excel 匯出功能
+        async function exportToExcel() {
+            try {
+                const exportButton = document.getElementById('export-excel-button');
+                exportButton.disabled = true;
+                exportButton.textContent = '正在匯出...';
+
+                // 收集巡檢記錄
+                const inspectionData = [];
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+                const standardQuery = query(collection(db, 'standard_inspection_log'));
+                const standardSnapshot = await getDocs(standardQuery);
+
+                const pointsMap = {
+                    'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
+                    'crane-4': '天車-4', 'crane-5': '天車-5',
+                    'acetylene': '乙炔區',
+                    'air-compressor': '空壓機',
+                    'hook-safety': '吊鉤安全高度',
+                    'emergency-stop': '急停開關',
+                    'factory-lights': '工廠電燈'
+                };
+
+                standardSnapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (data.timestamp) {
+                        inspectionData.push({
+                            '巡檢點': pointsMap[data.pointId] || data.pointId,
+                            '巡檢員': data.inspectorName || '',
+                            '時間': data.timestamp.toDate().toLocaleString('zh-TW', { hour12: false }),
+                            '作業系統': data.deviceInfo?.os || '---',
+                            '瀏覽器': data.deviceInfo?.browser || '---'
+                        });
+                    }
+                });
+
+                // 收集異常回報
+                const abnormalData = [];
+                const abnormalQuery = query(collection(db, 'abnormal_reports'));
+                const abnormalSnapshot = await getDocs(abnormalQuery);
+
+                abnormalSnapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    abnormalData.push({
+                        '巡檢點': data.pointName || '',
+                        '回報人': data.inspectorName || '',
+                        '回報時間': data.timestamp?.toDate().toLocaleString('zh-TW', { hour12: false }) || '',
+                        '狀況描述': data.description || '',
+                        '狀態': data.status === 'resolved' ? '已處理' : '處理中',
+                        '處理人': data.resolvedBy || '---',
+                        '處理時間': data.resolvedAt?.toDate().toLocaleString('zh-TW', { hour12: false }) || '---',
+                        '處理說明': data.resolution || '---',
+                        '作業系統': data.deviceInfo?.os || '---',
+                        '瀏覽器': data.deviceInfo?.browser || '---'
+                    });
+                });
+
+                // 建立工作簿
+                const wb = XLSX.utils.book_new();
+
+                // 建立巡檢記錄工作表
+                const ws1 = XLSX.utils.json_to_sheet(inspectionData);
+                XLSX.utils.book_append_sheet(wb, ws1, '巡檢記錄');
+
+                // 建立異常回報工作表
+                const ws2 = XLSX.utils.json_to_sheet(abnormalData);
+                XLSX.utils.book_append_sheet(wb, ws2, '異常回報');
+
+                // 匯出檔案
+                const timestamp = new Date().toISOString().slice(0, 10);
+                XLSX.writeFile(wb, `工廠巡檢報表_${timestamp}.xlsx`);
+
+                exportButton.disabled = false;
+                exportButton.textContent = '匯出 Excel 報表';
+                alert('Excel 報表匯出成功！');
+
+            } catch (error) {
+                console.error('匯出失敗:', error);
+                alert('匯出失敗: ' + error.message);
+                const exportButton = document.getElementById('export-excel-button');
+                exportButton.disabled = false;
+                exportButton.textContent = '匯出 Excel 報表';
+            }
+        }
+
+        // 綁定匯出按鈕
+        document.getElementById('export-excel-button').addEventListener('click', exportToExcel);
     </script>
 
     <!-- 異常處理 Modal -->

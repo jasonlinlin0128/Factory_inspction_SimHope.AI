@@ -92,6 +92,33 @@
 
         let db, auth, inspectorName, compressedPhotoBase64 = null, compressedReportPhotoBase64 = null;
 
+        // 獲取裝置資訊
+        function getDeviceInfo() {
+            const ua = navigator.userAgent;
+            let browser = 'Unknown';
+            let os = 'Unknown';
+
+            // 偵測瀏覽器
+            if (ua.indexOf('Chrome') > -1 && ua.indexOf('Edg') === -1) browser = 'Chrome';
+            else if (ua.indexOf('Edg') > -1) browser = 'Edge';
+            else if (ua.indexOf('Safari') > -1) browser = 'Safari';
+            else if (ua.indexOf('Firefox') > -1) browser = 'Firefox';
+
+            // 偵測作業系統
+            if (ua.indexOf('Android') > -1) os = 'Android';
+            else if (ua.indexOf('iPhone') > -1 || ua.indexOf('iPad') > -1) os = 'iOS';
+            else if (ua.indexOf('Windows') > -1) os = 'Windows';
+            else if (ua.indexOf('Mac') > -1) os = 'macOS';
+            else if (ua.indexOf('Linux') > -1) os = 'Linux';
+
+            return {
+                browser: browser,
+                os: os,
+                userAgent: ua,
+                timestamp: new Date().toISOString()
+            };
+        }
+
         async function main() {
             inspectorName = localStorage.getItem('inspectorName');
             if (!inspectorName) {
@@ -167,9 +194,20 @@
             if (!compressedPhotoBase64) return;
             uploadButton.disabled = true;
             uploadStatus.textContent = '正在上傳紀錄...';
+            const deviceInfo = getDeviceInfo();
             try {
-                await addDoc(collection(db, 'acetylene_log'), { inspectorName, imageBase64: compressedPhotoBase64, timestamp: serverTimestamp() });
-                await updateDoc(doc(db, 'inspectionPoints', 'acetylene'), { status: 'inspected', inspectorName, timestamp: serverTimestamp() });
+                await addDoc(collection(db, 'acetylene_log'), {
+                    inspectorName,
+                    imageBase64: compressedPhotoBase64,
+                    timestamp: serverTimestamp(),
+                    deviceInfo: deviceInfo
+                });
+                await updateDoc(doc(db, 'inspectionPoints', 'acetylene'), {
+                    status: 'inspected',
+                    inspectorName,
+                    timestamp: serverTimestamp(),
+                    deviceInfo: deviceInfo
+                });
                 uploadStatus.textContent = '巡檢成功！';
                 uploadStatus.className = 'mt-4 text-center h-6 text-green-600';
                 loadHistory();
@@ -186,6 +224,7 @@
                 return;
             }
             reportStatus.textContent = '正在提交回報...';
+            const deviceInfo = getDeviceInfo();
             try {
                 await addDoc(collection(db, 'abnormal_reports'), {
                     pointId: 'acetylene',
@@ -199,7 +238,8 @@
                     resolvedAt: null,
                     resolution: null,
                     notificationSent: false,
-                    resolutionNotificationSent: false
+                    resolutionNotificationSent: false,
+                    deviceInfo: deviceInfo
                 });
                 reportStatus.textContent = '異常回報成功！';
                 reportStatus.className = 'text-center mt-2 h-5 text-green-600';
