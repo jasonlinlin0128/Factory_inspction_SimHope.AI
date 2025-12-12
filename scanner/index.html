@@ -65,28 +65,72 @@
         const reportSection = document.getElementById('abnormal-report-section');
         let db, auth, inspectorName, pointId, pointName;
 
-        // 獲取裝置資訊
+        // 獲取裝置資訊（詳細版）
         function getDeviceInfo() {
             const ua = navigator.userAgent;
             let browser = 'Unknown';
+            let browserVersion = '';
             let os = 'Unknown';
+            let osVersion = '';
+            let deviceModel = '';
 
-            // 偵測瀏覽器
-            if (ua.indexOf('Chrome') > -1 && ua.indexOf('Edg') === -1) browser = 'Chrome';
-            else if (ua.indexOf('Edg') > -1) browser = 'Edge';
-            else if (ua.indexOf('Safari') > -1) browser = 'Safari';
-            else if (ua.indexOf('Firefox') > -1) browser = 'Firefox';
+            // 偵測瀏覽器和版本
+            if (ua.indexOf('Edg') > -1) {
+                browser = 'Edge';
+                const match = ua.match(/Edg\/([0-9.]+)/);
+                if (match) browserVersion = match[1];
+            } else if (ua.indexOf('Chrome') > -1) {
+                browser = 'Chrome';
+                const match = ua.match(/Chrome\/([0-9.]+)/);
+                if (match) browserVersion = match[1];
+            } else if (ua.indexOf('Safari') > -1) {
+                browser = 'Safari';
+                const match = ua.match(/Version\/([0-9.]+)/);
+                if (match) browserVersion = match[1];
+            } else if (ua.indexOf('Firefox') > -1) {
+                browser = 'Firefox';
+                const match = ua.match(/Firefox\/([0-9.]+)/);
+                if (match) browserVersion = match[1];
+            }
 
-            // 偵測作業系統
-            if (ua.indexOf('Android') > -1) os = 'Android';
-            else if (ua.indexOf('iPhone') > -1 || ua.indexOf('iPad') > -1) os = 'iOS';
-            else if (ua.indexOf('Windows') > -1) os = 'Windows';
-            else if (ua.indexOf('Mac') > -1) os = 'macOS';
-            else if (ua.indexOf('Linux') > -1) os = 'Linux';
+            // 偵測作業系統、版本和裝置型號
+            if (ua.indexOf('iPhone') > -1) {
+                os = 'iOS';
+                deviceModel = 'iPhone';
+                const match = ua.match(/OS ([0-9_]+)/);
+                if (match) osVersion = match[1].replace(/_/g, '.');
+            } else if (ua.indexOf('iPad') > -1) {
+                os = 'iOS';
+                deviceModel = 'iPad';
+                const match = ua.match(/OS ([0-9_]+)/);
+                if (match) osVersion = match[1].replace(/_/g, '.');
+            } else if (ua.indexOf('Android') > -1) {
+                os = 'Android';
+                const match = ua.match(/Android ([0-9.]+)/);
+                if (match) osVersion = match[1];
+                // 嘗試解析裝置型號
+                const modelMatch = ua.match(/\(Linux; Android [^;]+; ([^)]+)\)/);
+                if (modelMatch) deviceModel = modelMatch[1];
+            } else if (ua.indexOf('Windows') > -1) {
+                os = 'Windows';
+                if (ua.indexOf('Windows NT 10.0') > -1) osVersion = '10/11';
+                else if (ua.indexOf('Windows NT 6.3') > -1) osVersion = '8.1';
+                else if (ua.indexOf('Windows NT 6.2') > -1) osVersion = '8';
+                else if (ua.indexOf('Windows NT 6.1') > -1) osVersion = '7';
+            } else if (ua.indexOf('Mac') > -1 && ua.indexOf('iPhone') === -1 && ua.indexOf('iPad') === -1) {
+                os = 'macOS';
+                const match = ua.match(/Mac OS X ([0-9_]+)/);
+                if (match) osVersion = match[1].replace(/_/g, '.');
+            } else if (ua.indexOf('Linux') > -1) {
+                os = 'Linux';
+            }
 
             return {
                 browser: browser,
+                browserVersion: browserVersion,
                 os: os,
+                osVersion: osVersion,
+                deviceModel: deviceModel,
                 userAgent: ua,
                 timestamp: new Date().toISOString()
             };

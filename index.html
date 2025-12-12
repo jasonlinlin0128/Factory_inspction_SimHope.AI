@@ -100,12 +100,32 @@
                 let timestamp = '---';
                 if (data.timestamp?.toDate) timestamp = data.timestamp.toDate().toLocaleString('zh-TW', { hour12: false });
 
-                // 裝置資訊
+                // 裝置資訊（詳細版）
                 const deviceInfo = data.deviceInfo || null;
                 let deviceHTML = '';
                 if (deviceInfo) {
                     const deviceIcon = deviceInfo.os === 'Android' ? '📱' : deviceInfo.os === 'iOS' ? '🍎' : '💻';
-                    deviceHTML = `<p>裝置: <span class="font-medium text-slate-700">${deviceIcon} ${deviceInfo.os} / ${deviceInfo.browser}</span></p>`;
+
+                    // 組合裝置型號和系統版本
+                    let deviceDetail = '';
+                    if (deviceInfo.deviceModel) {
+                        deviceDetail = deviceInfo.deviceModel;
+                        if (deviceInfo.osVersion) deviceDetail += ` (${deviceInfo.os} ${deviceInfo.osVersion})`;
+                    } else if (deviceInfo.osVersion) {
+                        deviceDetail = `${deviceInfo.os} ${deviceInfo.osVersion}`;
+                    } else {
+                        deviceDetail = deviceInfo.os;
+                    }
+
+                    // 組合瀏覽器和版本
+                    let browserDetail = deviceInfo.browser;
+                    if (deviceInfo.browserVersion) {
+                        const shortVersion = deviceInfo.browserVersion.split('.')[0]; // 只取主版本號
+                        browserDetail += ` ${shortVersion}`;
+                    }
+
+                    deviceHTML = `<p class="text-xs">裝置: <span class="font-medium text-slate-700">${deviceIcon} ${deviceDetail}</span></p>
+                                  <p class="text-xs">瀏覽器: <span class="font-medium text-slate-700">${browserDetail}</span></p>`;
                 }
 
                 const isInspected = status === 'inspected';
@@ -362,12 +382,25 @@
                 standardSnapshot.docs.forEach(doc => {
                     const data = doc.data();
                     if (data.timestamp) {
+                        const deviceInfo = data.deviceInfo || {};
+                        let deviceDetail = deviceInfo.os || '---';
+                        if (deviceInfo.deviceModel) {
+                            deviceDetail = `${deviceInfo.deviceModel} (${deviceInfo.os || ''} ${deviceInfo.osVersion || ''})`.trim();
+                        } else if (deviceInfo.osVersion) {
+                            deviceDetail = `${deviceInfo.os} ${deviceInfo.osVersion}`;
+                        }
+
+                        let browserDetail = deviceInfo.browser || '---';
+                        if (deviceInfo.browserVersion) {
+                            browserDetail = `${deviceInfo.browser} ${deviceInfo.browserVersion.split('.')[0]}`;
+                        }
+
                         inspectionData.push({
                             '巡檢點': pointsMap[data.pointId] || data.pointId,
                             '巡檢員': data.inspectorName || '',
                             '時間': data.timestamp.toDate().toLocaleString('zh-TW', { hour12: false }),
-                            '作業系統': data.deviceInfo?.os || '---',
-                            '瀏覽器': data.deviceInfo?.browser || '---'
+                            '裝置': deviceDetail,
+                            '瀏覽器': browserDetail
                         });
                     }
                 });
@@ -379,6 +412,19 @@
 
                 abnormalSnapshot.docs.forEach(doc => {
                     const data = doc.data();
+                    const deviceInfo = data.deviceInfo || {};
+                    let deviceDetail = deviceInfo.os || '---';
+                    if (deviceInfo.deviceModel) {
+                        deviceDetail = `${deviceInfo.deviceModel} (${deviceInfo.os || ''} ${deviceInfo.osVersion || ''})`.trim();
+                    } else if (deviceInfo.osVersion) {
+                        deviceDetail = `${deviceInfo.os} ${deviceInfo.osVersion}`;
+                    }
+
+                    let browserDetail = deviceInfo.browser || '---';
+                    if (deviceInfo.browserVersion) {
+                        browserDetail = `${deviceInfo.browser} ${deviceInfo.browserVersion.split('.')[0]}`;
+                    }
+
                     abnormalData.push({
                         '巡檢點': data.pointName || '',
                         '回報人': data.inspectorName || '',
@@ -388,8 +434,8 @@
                         '處理人': data.resolvedBy || '---',
                         '處理時間': data.resolvedAt?.toDate().toLocaleString('zh-TW', { hour12: false }) || '---',
                         '處理說明': data.resolution || '---',
-                        '作業系統': data.deviceInfo?.os || '---',
-                        '瀏覽器': data.deviceInfo?.browser || '---'
+                        '裝置': deviceDetail,
+                        '瀏覽器': browserDetail
                     });
                 });
 
