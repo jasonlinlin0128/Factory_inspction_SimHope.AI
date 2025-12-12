@@ -48,24 +48,45 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, doc, updateDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         const firebaseConfig = {
-            apiKey: "AIzaSyCux2MYcB_BgeCxTIu_gGzezkqYZFHO8RQ",
-            authDomain: "factory-inspction-simhope-ai.firebaseapp.com",
-            projectId: "factory-inspction-simhope-ai",
-            storageBucket: "factory-inspction-simhope-ai.appspot.com",
-            messagingSenderId: "386322024576",
-            appId: "1:386322024576:web:fdb68ed57b162987487e65",
-            measurementId: "G-HKPEP59T1P"
+            apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
+            authDomain: "factory-inspection-system.firebaseapp.com",
+            projectId: "factory-inspection-system",
+            storageBucket: "factory-inspection-system.firebasestorage.app",
+            messagingSenderId: "1094359521084",
+            appId: "1:1094359521084:web:f24d8dd4fd68c3e670f039",
+            measurementId: "G-MJ417JZWR6"
         };
         
         const mainMessage = document.getElementById('main-message');
         const reportSection = document.getElementById('abnormal-report-section');
         let db, auth, inspectorName, pointId, pointName;
 
-        function compressImage(file) { /* ... 壓縮圖片函式不變 ... */ }
+        function compressImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = event => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const scaleSize = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scaleSize;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.7));
+                    };
+                    img.onerror = reject;
+                };
+                reader.onerror = reject;
+            });
+        }
 
         async function handleStandardInspection() {
             const pointRef = doc(db, 'inspectionPoints', pointId);
@@ -85,6 +106,13 @@
                     reportButton.style.display = 'none';
                 };
                 mainMessage.parentElement.appendChild(reportButton);
+
+                // 新增「查看我的回報」按鈕
+                const myReportsButton = document.createElement('button');
+                myReportsButton.textContent = '查看我的回報';
+                myReportsButton.className = 'mt-3 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg w-full';
+                myReportsButton.onclick = openMyReportsModal;
+                mainMessage.parentElement.appendChild(myReportsButton);
             } catch (error) {
                 mainMessage.textContent = `更新失敗: ${error.code || error.message}`;
                 mainMessage.parentElement.querySelector('.loader').style.display = 'none';
@@ -92,7 +120,125 @@
             }
         }
         
-        async function submitAbnormalReport(description, compressedBase64) { /* ... 異常回報函式不變 ... */ }
+        async function submitAbnormalReport() {
+            const description = document.getElementById('report-description').value.trim();
+            const reportPhotoInput = document.getElementById('report-photo');
+            const reportStatus = document.getElementById('report-status');
+
+            if (!description) {
+                alert('請填寫異常狀況描述！');
+                return;
+            }
+
+            reportStatus.textContent = '正在提交回報...';
+            reportStatus.className = 'text-center mt-2 h-5 text-yellow-400';
+
+            try {
+                let compressedBase64 = null;
+                if (reportPhotoInput.files.length > 0) {
+                    compressedBase64 = await compressImage(reportPhotoInput.files[0]);
+                }
+
+                const pointsMap = {
+                    'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
+                    'crane-4': '天車-4', 'crane-5': '天車-5',
+                    'hook-safety': '吊鉤安全高度',
+                    'emergency-stop': '急停開關',
+                    'factory-lights': '工廠電燈'
+                };
+
+                await addDoc(collection(db, 'abnormal_reports'), {
+                    pointId: pointId,
+                    pointName: pointsMap[pointId] || pointId,
+                    inspectorName: inspectorName,
+                    description: description,
+                    imageBase64: compressedBase64,
+                    timestamp: serverTimestamp(),
+                    status: 'reported',
+                    resolvedBy: null,
+                    resolvedAt: null,
+                    resolution: null,
+                    notificationSent: false,
+                    resolutionNotificationSent: false
+                });
+
+                reportStatus.textContent = '異常回報成功！主管已收到 LINE 通知。';
+                reportStatus.className = 'text-center mt-2 h-5 text-green-400';
+
+                // 清空表單
+                document.getElementById('report-description').value = '';
+                const preview = document.getElementById('report-photo-preview');
+                if (preview) preview.classList.add('hidden');
+                reportPhotoInput.value = '';
+
+                if ('vibrate' in navigator) navigator.vibrate([100, 50, 100]);
+
+            } catch (error) {
+                console.error('提交失敗:', error);
+                reportStatus.textContent = `提交失敗: ${error.message}`;
+                reportStatus.className = 'text-center mt-2 h-5 text-red-400';
+            }
+        }
+
+        async function openMyReportsModal() {
+            const modal = document.getElementById('my-reports-modal');
+            const body = document.getElementById('my-reports-body');
+
+            modal.classList.remove('hidden');
+            body.innerHTML = '<p class="text-slate-500 text-center py-10">正在載入...</p>';
+
+            try {
+                const q = query(
+                    collection(db, 'abnormal_reports'),
+                    where('inspectorName', '==', inspectorName)
+                );
+                const snapshot = await getDocs(q);
+
+                let reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                reports.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+
+                if (reports.length === 0) {
+                    body.innerHTML = '<p class="text-slate-500 text-center py-10">您尚未回報任何異常。</p>';
+                    return;
+                }
+
+                body.innerHTML = '';
+                reports.forEach(report => {
+                    const isResolved = report.status === 'resolved';
+                    const statusBadge = isResolved
+                        ? '<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">已處理</span>'
+                        : '<span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">處理中</span>';
+
+                    const resolutionHTML = isResolved ? `
+                        <div class="mt-3 p-3 bg-green-50 rounded-md border border-green-200">
+                            <p class="text-sm font-semibold text-green-800">處理說明：</p>
+                            <p class="text-sm text-slate-700 mt-1">${report.resolution}</p>
+                            <p class="text-xs text-slate-500 mt-2">處理人：${report.resolvedBy} | ${report.resolvedAt.toDate().toLocaleString('zh-TW', { hour12: false })}</p>
+                        </div>
+                    ` : '';
+
+                    const imageHTML = report.imageBase64 ? `<img src="${report.imageBase64}" class="w-full rounded-md mt-2 border border-slate-200">` : '';
+
+                    const card = `
+                        <div class="border border-slate-200 p-4 rounded-lg bg-white">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-bold text-lg text-slate-800">${report.pointName}</h3>
+                                ${statusBadge}
+                            </div>
+                            <p class="text-sm text-slate-500 mb-2">${report.timestamp.toDate().toLocaleString('zh-TW', { hour12: false })}</p>
+                            <p class="text-slate-800 bg-slate-100 p-2 rounded-md">${report.description}</p>
+                            ${imageHTML}
+                            ${resolutionHTML}
+                        </div>
+                    `;
+                    body.insertAdjacentHTML('beforeend', card);
+                });
+
+            } catch (error) {
+                console.error('載入失敗:', error);
+                body.innerHTML = `<p class="text-red-500 text-center py-10">載入失敗: ${error.message}</p>`;
+            }
+        }
 
         async function main() {
             if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
@@ -132,8 +278,44 @@
             }
         }
 
-        // ... 綁定回報區事件的程式碼不變 ...
+        // 綁定異常回報相關事件
+        document.getElementById('report-photo-button').addEventListener('click', () => {
+            document.getElementById('report-photo').click();
+        });
+
+        document.getElementById('report-photo').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const preview = document.getElementById('report-photo-preview');
+                preview.src = URL.createObjectURL(file);
+                preview.classList.remove('hidden');
+            }
+        });
+
+        document.getElementById('submit-report-button').addEventListener('click', submitAbnormalReport);
+
+        // 綁定「我的回報」Modal 關閉事件
+        const myReportsModal = document.getElementById('my-reports-modal');
+        const closeMyReportsModalBtn = document.getElementById('close-my-reports-modal');
+        if (closeMyReportsModalBtn) {
+            closeMyReportsModalBtn.addEventListener('click', () => {
+                myReportsModal.classList.add('hidden');
+            });
+        }
+
         main();
     </script>
+
+    <!-- 我的回報 Modal -->
+    <div id="my-reports-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <header class="flex items-center justify-between p-5 border-b bg-white rounded-t-lg">
+                <h2 class="text-xl font-bold text-slate-800">我的異常回報</h2>
+                <button id="close-my-reports-modal" class="text-slate-400 hover:text-slate-800 text-3xl leading-none">&times;</button>
+            </header>
+            <main id="my-reports-body" class="p-6 overflow-y-auto space-y-4 bg-slate-50 flex-1"></main>
+        </div>
+    </div>
+
 </body>
 </html>

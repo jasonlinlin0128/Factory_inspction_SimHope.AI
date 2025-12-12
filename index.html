@@ -57,16 +57,16 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         const firebaseConfig = {
-            apiKey: "AIzaSyCux2MYcB_BgeCxTIu_gGzezkqYZFHO8RQ",
-            authDomain: "factory-inspction-simhope-ai.firebaseapp.com",
-            projectId: "factory-inspction-simhope-ai",
-            storageBucket: "factory-inspction-simhope-ai.appspot.com",
-            messagingSenderId: "386322024576",
-            appId: "1:386322024576:web:fdb68ed57b162987487e65",
-            measurementId: "G-HKPEP59T1P"
+            apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
+            authDomain: "factory-inspection-system.firebaseapp.com",
+            projectId: "factory-inspection-system",
+            storageBucket: "factory-inspection-system.firebasestorage.app",
+            messagingSenderId: "1094359521084",
+            appId: "1:1094359521084:web:f24d8dd4fd68c3e670f039",
+            measurementId: "G-MJ417JZWR6"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -149,8 +149,15 @@
                         </div>
                         <p class="text-slate-800 bg-slate-100 p-2 rounded-md">${report.description}</p>
                         ${imageHTML}
-                        <div class="mt-3 text-right text-sm">
-                            <span class="font-semibold">${report.inspectorName}</span> 回報
+                        <div class="mt-3 flex justify-between items-center">
+                            <span class="text-sm font-semibold">${report.inspectorName} 回報</span>
+                            <button
+                                data-report-id="${report.id}"
+                                data-point-name="${report.pointName}"
+                                data-inspector-name="${report.inspectorName}"
+                                class="resolve-button bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                                標記已處理
+                            </button>
                         </div>
                     </div>
                 `;
@@ -238,6 +245,108 @@
         historyModal.addEventListener('click', (e) => { if (e.target === historyModal) closeModal(); });
 
         listenForUpdates();
+
+        // ========== 異常處理功能 ==========
+
+        // Modal 元素
+        const resolveModal = document.getElementById('resolve-modal');
+        const closeResolveModalBtn = document.getElementById('close-resolve-modal');
+        const cancelResolveButton = document.getElementById('cancel-resolve-button');
+        const confirmResolveButton = document.getElementById('confirm-resolve-button');
+        const resolverNameInput = document.getElementById('resolver-name-input');
+        const resolutionInput = document.getElementById('resolution-input');
+
+        let currentReportId = null;
+
+        // 開啟處理對話框
+        function openResolveModal(reportId, pointName, inspectorName) {
+            currentReportId = reportId;
+            resolveModal.classList.remove('hidden');
+            resolverNameInput.value = '';
+            resolutionInput.value = '';
+            resolverNameInput.focus();
+        }
+
+        // 關閉對話框
+        function closeResolveModalHandler() {
+            resolveModal.classList.add('hidden');
+            currentReportId = null;
+        }
+
+        // 確認處理
+        async function confirmResolve() {
+            const resolverName = resolverNameInput.value.trim();
+            const resolution = resolutionInput.value.trim();
+
+            if (!resolverName || !resolution) {
+                alert('請填寫所有必填欄位！');
+                return;
+            }
+
+            try {
+                confirmResolveButton.disabled = true;
+                confirmResolveButton.textContent = '處理中...';
+
+                await updateDoc(doc(db, 'abnormal_reports', currentReportId), {
+                    status: 'resolved',
+                    resolvedBy: resolverName,
+                    resolvedAt: serverTimestamp(),
+                    resolution: resolution
+                });
+
+                alert('異常已標記為處理完成！LINE 通知已自動發送。');
+                closeResolveModalHandler();
+            } catch (error) {
+                console.error('處理失敗:', error);
+                alert('處理失敗: ' + error.message);
+            } finally {
+                confirmResolveButton.disabled = false;
+                confirmResolveButton.textContent = '確認處理完成';
+            }
+        }
+
+        // 綁定事件：點擊「標記已處理」按鈕
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('resolve-button')) {
+                const reportId = e.target.dataset.reportId;
+                const pointName = e.target.dataset.pointName;
+                const inspectorName = e.target.dataset.inspectorName;
+                openResolveModal(reportId, pointName, inspectorName);
+            }
+        });
+
+        // 綁定 Modal 關閉事件
+        closeResolveModalBtn.addEventListener('click', closeResolveModalHandler);
+        cancelResolveButton.addEventListener('click', closeResolveModalHandler);
+        confirmResolveButton.addEventListener('click', confirmResolve);
+        resolveModal.addEventListener('click', (e) => {
+            if (e.target === resolveModal) closeResolveModalHandler();
+        });
     </script>
+
+    <!-- 異常處理 Modal -->
+    <div id="resolve-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <header class="flex items-center justify-between p-5 border-b">
+                <h2 class="text-xl font-bold text-slate-800">標記異常已處理</h2>
+                <button id="close-resolve-modal" class="text-slate-400 hover:text-slate-800 text-3xl leading-none">&times;</button>
+            </header>
+            <main class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-2 text-slate-700">處理人員姓名 *</label>
+                    <input type="text" id="resolver-name-input" class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" placeholder="請輸入您的姓名">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-2 text-slate-700">處理說明 *</label>
+                    <textarea id="resolution-input" rows="4" class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" placeholder="請詳述處理過程和結果"></textarea>
+                </div>
+            </main>
+            <footer class="flex justify-end gap-3 p-5 border-t bg-slate-50 rounded-b-lg">
+                <button id="cancel-resolve-button" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-md font-medium transition-colors">取消</button>
+                <button id="confirm-resolve-button" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-colors">確認處理完成</button>
+            </footer>
+        </div>
+    </div>
+
 </body>
 </html>

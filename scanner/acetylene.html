@@ -52,6 +52,12 @@
             <button id="submit-report-button" class="w-full mt-3 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-md transition-colors">提交異常回報</button>
             <p id="report-status" class="text-center mt-2 h-5"></p>
         </section>
+
+        <!-- 4. 我的回報 -->
+        <section class="bg-white p-5 rounded-lg border border-slate-200 shadow-sm mb-6 flex-shrink-0">
+            <h2 class="text-lg font-semibold mb-2 text-slate-800">4. 我的回報</h2>
+            <button id="my-reports-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition-colors">查看我的異常回報</button>
+        </section>
     </div>
 
     <!-- Firebase SDK -->
@@ -61,13 +67,13 @@
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         const firebaseConfig = {
-            apiKey: "AIzaSyCux2MYcB_BgeCxTIu_gGzezkqYZFHO8RQ",
-            authDomain: "factory-inspction-simhope-ai.firebaseapp.com",
-            projectId: "factory-inspction-simhope-ai",
-            storageBucket: "factory-inspction-simhope-ai.appspot.com",
-            messagingSenderId: "386322024576",
-            appId: "1:386322024576:web:fdb68ed57b162987487e65",
-            measurementId: "G-HKPEP59T1P"
+            apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
+            authDomain: "factory-inspection-system.firebaseapp.com",
+            projectId: "factory-inspection-system",
+            storageBucket: "factory-inspection-system.firebasestorage.app",
+            messagingSenderId: "1094359521084",
+            appId: "1:1094359521084:web:f24d8dd4fd68c3e670f039",
+            measurementId: "G-MJ417JZWR6"
         };
         
         const displayName = document.getElementById('display-inspector-name');
@@ -231,7 +237,92 @@
                 historyLog.innerHTML = `<p class="text-red-500 text-center pt-10">讀取紀錄失敗: ${error.message}</p>`;
             }
         }
+
+        async function openMyReportsModal() {
+            const modal = document.getElementById('my-reports-modal');
+            const body = document.getElementById('my-reports-body');
+
+            modal.classList.remove('hidden');
+            body.innerHTML = '<p class="text-slate-500 text-center py-10">正在載入...</p>';
+
+            try {
+                const q = query(
+                    collection(db, 'abnormal_reports'),
+                    where('inspectorName', '==', inspectorName)
+                );
+                const snapshot = await getDocs(q);
+
+                let reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                reports.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+
+                if (reports.length === 0) {
+                    body.innerHTML = '<p class="text-slate-500 text-center py-10">您尚未回報任何異常。</p>';
+                    return;
+                }
+
+                body.innerHTML = '';
+                reports.forEach(report => {
+                    const isResolved = report.status === 'resolved';
+                    const statusBadge = isResolved
+                        ? '<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">已處理</span>'
+                        : '<span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">處理中</span>';
+
+                    const resolutionHTML = isResolved ? `
+                        <div class="mt-3 p-3 bg-green-50 rounded-md border border-green-200">
+                            <p class="text-sm font-semibold text-green-800">處理說明：</p>
+                            <p class="text-sm text-slate-700 mt-1">${report.resolution}</p>
+                            <p class="text-xs text-slate-500 mt-2">處理人：${report.resolvedBy} | ${report.resolvedAt.toDate().toLocaleString('zh-TW', { hour12: false })}</p>
+                        </div>
+                    ` : '';
+
+                    const imageHTML = report.imageBase64 ? `<img src="${report.imageBase64}" class="w-full rounded-md mt-2 border border-slate-200">` : '';
+
+                    const card = `
+                        <div class="border border-slate-200 p-4 rounded-lg bg-white">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-bold text-lg text-slate-800">${report.pointName}</h3>
+                                ${statusBadge}
+                            </div>
+                            <p class="text-sm text-slate-500 mb-2">${report.timestamp.toDate().toLocaleString('zh-TW', { hour12: false })}</p>
+                            <p class="text-slate-800 bg-slate-100 p-2 rounded-md">${report.description}</p>
+                            ${imageHTML}
+                            ${resolutionHTML}
+                        </div>
+                    `;
+                    body.insertAdjacentHTML('beforeend', card);
+                });
+
+            } catch (error) {
+                console.error('載入失敗:', error);
+                body.innerHTML = `<p class="text-red-500 text-center py-10">載入失敗: ${error.message}</p>`;
+            }
+        }
+
+        // 綁定「我的回報」按鈕事件
+        document.getElementById('my-reports-button').addEventListener('click', openMyReportsModal);
+
+        // 綁定「我的回報」Modal 關閉事件
+        const myReportsModal = document.getElementById('my-reports-modal');
+        const closeMyReportsModalBtn = document.getElementById('close-my-reports-modal');
+        if (closeMyReportsModalBtn) {
+            closeMyReportsModalBtn.addEventListener('click', () => {
+                myReportsModal.classList.add('hidden');
+            });
+        }
+
         main();
     </script>
+
+    <!-- 我的回報 Modal -->
+    <div id="my-reports-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <header class="flex items-center justify-between p-5 border-b bg-white rounded-t-lg">
+                <h2 class="text-xl font-bold text-slate-800">我的異常回報</h2>
+                <button id="close-my-reports-modal" class="text-slate-400 hover:text-slate-800 text-3xl leading-none">&times;</button>
+            </header>
+            <main id="my-reports-body" class="p-6 overflow-y-auto space-y-4 bg-slate-50 flex-1"></main>
+        </div>
+    </div>
+
 </body>
 </html>

@@ -1,0 +1,101 @@
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+const axios = require('axios');
+
+admin.initializeApp();
+
+// 直接寫入 LINE Token（私有專案適用）
+const LINE_TOKEN = '0VfTCBVW7v4LyTT0AlWKkrLxz11w6nR8kw8VDv3KlqAMr/Ia8DAoxIH96dz711qwY/nECvKl4x8oV3EzXQ9bIfmCLbqSK7y8MV4UiacHeDcnS8vdwOOQYY7/GfyAaEMHAsW++TRW/C9mhL4xwYMqYQdB04t89/1O/w1cDnyilFU=';
+
+/**
+ * 發送 LINE Notify 通知
+ * @param {string} token - LINE Notify Access Token
+ * @param {string} message - 要發送的訊息
+ */
+async function sendLineNotify(token, message) {
+  try {
+    await axios.post('https://notify-api.line.me/api/notify',
+      `message=${encodeURIComponent(message)}`,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Bearer ${token}`
+        }
+      }
+    );
+    console.log('LINE 通知發送成功');
+  } catch (error) {
+    console.error('LINE 通知發送失敗:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Trigger 1: 新異常回報時自動發送通知給主管
+ * 當 abnormal_reports collection 新增文件時觸發
+ */
+exports.onAbnormalReportCreated = functions
+  .region('asia-east1')
+  .firestore
+  .document('abnormal_reports/{reportId}')
+  .onCreate(async (snapshot, context) => {
+    const report = snapshot.data();
+
+    console.log('偵測到新異常回報:', context.params.reportId);
+
+    const message = `
+⚠️ 新異常回報
+巡檢點：${report.pointName}
+回報人：${report.inspectorName}
+時間：${report.timestamp.toDate().toLocaleString('zh-TW', { hour12: false })}
+
+異常描述：
+${report.description}
+
+請儘速安排處理。
+    `.trim();
+
+    try {
+      // 發送 LINE 通知
+      await sendLineNotify(LINE_TOKEN, message);
+
+      // 更新文件，標記通知已發送
+      await snapshot.ref.update({ notificationSent: true });
+
+      console.log('異常回報通知處理完成');
+    } catch (error) {
+      console.error('處理異常回報通知失敗:', error);
+      // 即使通知失敗也不拋出錯誤，避免重試
+    }
+  });
+
+/**
+ * Trigger 2: 異常處理完成時更新狀態
+ * 當 abnormal_reports 文件的 status 從 reported 變為 resolved 時觸發
+ *
+ * 注意：由於 LINE Token 綁定到主管個人，處理完成不發送 LINE 通知
+ * 巡檢員可透過「我的回報」功能查看處理狀態
+ */
+exports.onAbnormalReportResolved = functions
+  .region('asia-east1')
+  .firestore
+  .document('abnormal_reports/{reportId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+
+    // 只在狀態從 reported 變為 resolved 時觸發
+    if (before.status === 'reported' && after.status === 'resolved') {
+      console.log('偵測到異常已處理:', context.params.reportId);
+      console.log('處理人:', after.resolvedBy);
+      console.log('原回報人可透過「我的回報」查看處理結果');
+
+      try {
+        // 只標記處理完成通知已發送（實際不發 LINE 通知）
+        await change.after.ref.update({ resolutionNotificationSent: true });
+        console.log('異常處理狀態已更新');
+      } catch (error) {
+        console.error('更新狀態失敗:', error);
+      }
+    }
+  });
