@@ -57,6 +57,30 @@
         </div>
     </div>
 
+    <!-- 異常處理 Modal -->
+    <div id="resolve-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <header class="flex items-center justify-between p-5 border-b">
+                <h2 class="text-xl font-bold text-slate-800">標記異常已處理</h2>
+                <button id="close-resolve-modal" class="text-slate-400 hover:text-slate-800 text-3xl leading-none">&times;</button>
+            </header>
+            <main class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-2 text-slate-700">處理人員姓名 *</label>
+                    <input type="text" id="resolver-name-input" class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" placeholder="請輸入您的姓名">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-2 text-slate-700">處理說明 *</label>
+                    <textarea id="resolution-input" rows="4" class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" placeholder="請詳述處理過程和結果"></textarea>
+                </div>
+            </main>
+            <footer class="flex justify-end gap-3 p-5 border-t bg-slate-50 rounded-b-lg">
+                <button id="cancel-resolve-button" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-md font-medium transition-colors">取消</button>
+                <button id="confirm-resolve-button" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-colors">確認處理完成</button>
+            </footer>
+        </div>
+    </div>
+
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -471,30 +495,6 @@
         // 綁定匯出按鈕
         document.getElementById('export-excel-button').addEventListener('click', exportToExcel);
     </script>
-
-    <!-- 異常處理 Modal -->
-    <div id="resolve-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
-            <header class="flex items-center justify-between p-5 border-b">
-                <h2 class="text-xl font-bold text-slate-800">標記異常已處理</h2>
-                <button id="close-resolve-modal" class="text-slate-400 hover:text-slate-800 text-3xl leading-none">&times;</button>
-            </header>
-            <main class="p-6 space-y-4">
-                <div>
-                    <label class="block text-sm font-semibold mb-2 text-slate-700">處理人員姓名 *</label>
-                    <input type="text" id="resolver-name-input" class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" placeholder="請輸入您的姓名">
-                </div>
-                <div>
-                    <label class="block text-sm font-semibold mb-2 text-slate-700">處理說明 *</label>
-                    <textarea id="resolution-input" rows="4" class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" placeholder="請詳述處理過程和結果"></textarea>
-                </div>
-            </main>
-            <footer class="flex justify-end gap-3 p-5 border-t bg-slate-50 rounded-b-lg">
-                <button id="cancel-resolve-button" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-md font-medium transition-colors">取消</button>
-                <button id="confirm-resolve-button" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-colors">確認處理完成</button>
-            </footer>
-        </div>
-    </div>
 
 </body>
 </html>
