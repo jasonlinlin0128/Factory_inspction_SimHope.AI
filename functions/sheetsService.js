@@ -79,21 +79,19 @@ async function appendToSheet(rows) {
  */
 async function logStandardInspection(data) {
   const row = [
-    formatDateTime(data.timestamp),
-    '標準巡檢',
-    data.pointName || data.pointId,
-    data.inspectorName,
-    data.deviceInfo?.browser || '',
-    data.deviceInfo?.os || '',
-    data.deviceInfo?.model || '',
-    data.webauthnVerified ? '是' : '否',
-    // 新增巡檢狀態欄位
-    data.status === 'abnormal' ? '異常' : '正常',  // 巡檢狀態
-    data.description || '',                         // 異常描述
-    data.hasImage || '否',                          // 是否有照片
-    '', // 處理狀態（空白）
-    '', // 處理人（空白）
-    '', // 處理說明（空白）
+    formatDateTime(data.timestamp),                 // A - 時間
+    '標準巡檢',                                     // B - 類型
+    data.pointName || data.pointId,                 // C - 巡檢點
+    data.inspectorName,                             // D - 巡檢員/回報人
+    data.deviceInfo?.browser || '',                 // E - 瀏覽器
+    data.deviceInfo?.os || '',                      // F - 作業系統
+    data.deviceInfo?.model || '',                   // G - 裝置型號
+    data.status === 'abnormal' ? '異常' : '正常',  // H - 巡檢狀態
+    data.description || '',                         // I - 異常描述
+    data.hasImage || '否',                          // J - 照片
+    '',                                             // K - 處理狀態（空白）
+    '',                                             // L - 處理人（空白）
+    '',                                             // M - 處理說明（空白）
   ];
 
   return await appendToSheet([row]);
@@ -104,18 +102,19 @@ async function logStandardInspection(data) {
  */
 async function logAcetyleneInspection(data) {
   const row = [
-    formatDateTime(data.timestamp),
-    '乙炔區巡檢',
-    '乙炔區',
-    data.inspectorName,
-    data.deviceInfo?.browser || '',
-    data.deviceInfo?.os || '',
-    data.deviceInfo?.model || '',
-    data.webauthnVerified ? '是' : '否',
-    '', // 異常描述
-    '', // 處理狀態
-    '', // 處理人
-    '', // 處理說明
+    formatDateTime(data.timestamp),      // A - 時間
+    '乙炔區巡檢',                        // B - 類型
+    '乙炔區',                            // C - 巡檢點
+    data.inspectorName,                  // D - 巡檢員/回報人
+    data.deviceInfo?.browser || '',      // E - 瀏覽器
+    data.deviceInfo?.os || '',           // F - 作業系統
+    data.deviceInfo?.model || '',        // G - 裝置型號
+    '',                                  // H - 巡檢狀態（空白）
+    '',                                  // I - 異常描述（空白）
+    '是',                                // J - 照片（乙炔區必有照片）
+    '',                                  // K - 處理狀態（空白）
+    '',                                  // L - 處理人（空白）
+    '',                                  // M - 處理說明（空白）
   ];
 
   return await appendToSheet([row]);
@@ -126,18 +125,19 @@ async function logAcetyleneInspection(data) {
  */
 async function logAbnormalReport(data) {
   const row = [
-    formatDateTime(data.timestamp),
-    '異常回報',
-    data.pointName || data.pointId,
-    data.inspectorName,
-    data.deviceInfo?.browser || '',
-    data.deviceInfo?.os || '',
-    data.deviceInfo?.model || '',
-    '', // 生物辨識
-    data.description || '',
-    '待處理',
-    '',
-    '',
+    formatDateTime(data.timestamp),      // A - 時間
+    '異常回報',                          // B - 類型
+    data.pointName || data.pointId,      // C - 巡檢點
+    data.inspectorName,                  // D - 巡檢員/回報人
+    data.deviceInfo?.browser || '',      // E - 瀏覽器
+    data.deviceInfo?.os || '',           // F - 作業系統
+    data.deviceInfo?.model || '',        // G - 裝置型號
+    '',                                  // H - 巡檢狀態（空白）
+    data.description || '',              // I - 異常描述
+    data.imageBase64 ? '是' : '否',      // J - 照片
+    '待處理',                            // K - 處理狀態
+    '',                                  // L - 處理人（空白）
+    '',                                  // M - 處理說明（空白）
   ];
 
   return await appendToSheet([row]);
@@ -158,7 +158,7 @@ async function updateAbnormalResolution(data) {
     // 讀取所有資料找到對應的異常回報
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:L`,
+      range: `${SHEET_NAME}!A:M`,
     });
 
     const rows = response.data.values || [];
@@ -174,7 +174,7 @@ async function updateAbnormalResolution(data) {
       if (row[1] === '異常回報' &&
           row[2] === targetPoint &&
           row[3] === targetInspector &&
-          row[9] === '待處理') {
+          row[10] === '待處理') {  // K欄 - 處理狀態
         rowIndex = i + 1; // Sheets 的 row index 從 1 開始
         break;
       }
@@ -184,18 +184,19 @@ async function updateAbnormalResolution(data) {
       console.log('找不到對應的異常回報，新增一筆完整紀錄');
       // 新增完整紀錄（包含處理狀態）
       const row = [
-        targetTime,
-        '異常回報',
-        targetPoint,
-        targetInspector,
-        data.deviceInfo?.browser || '',
-        data.deviceInfo?.os || '',
-        data.deviceInfo?.model || '',
-        '',
-        data.description || '',
-        '已處理',
-        data.resolvedBy || '',
-        data.resolution || '',
+        targetTime,                       // A - 時間
+        '異常回報',                       // B - 類型
+        targetPoint,                      // C - 巡檢點
+        targetInspector,                  // D - 巡檢員/回報人
+        data.deviceInfo?.browser || '',   // E - 瀏覽器
+        data.deviceInfo?.os || '',        // F - 作業系統
+        data.deviceInfo?.model || '',     // G - 裝置型號
+        '',                               // H - 巡檢狀態（空白）
+        data.description || '',           // I - 異常描述
+        '',                               // J - 照片（空白）
+        '已處理',                         // K - 處理狀態
+        data.resolvedBy || '',            // L - 處理人
+        data.resolution || '',            // M - 處理說明
       ];
       return await appendToSheet([row]);
     }
@@ -203,7 +204,7 @@ async function updateAbnormalResolution(data) {
     // 更新處理狀態
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!J${rowIndex}:L${rowIndex}`,
+      range: `${SHEET_NAME}!K${rowIndex}:M${rowIndex}`,
       valueInputOption: 'RAW',
       resource: {
         values: [['已處理', data.resolvedBy || '', data.resolution || '']]
@@ -252,8 +253,9 @@ async function initializeSheetHeaders() {
     '瀏覽器',
     '作業系統',
     '裝置型號',
-    '生物辨識',
+    '巡檢狀態',
     '異常描述',
+    '照片',
     '處理狀態',
     '處理人',
     '處理說明'
@@ -269,7 +271,7 @@ async function initializeSheetHeaders() {
     // 檢查是否已有表頭
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A1:L1`,
+      range: `${SHEET_NAME}!A1:M1`,
     });
 
     if (response.data.values && response.data.values.length > 0) {
@@ -280,7 +282,7 @@ async function initializeSheetHeaders() {
     // 寫入表頭
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A1:L1`,
+      range: `${SHEET_NAME}!A1:M1`,
       valueInputOption: 'RAW',
       resource: {
         values: [headers]

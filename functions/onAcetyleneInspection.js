@@ -20,8 +20,7 @@ exports.onAcetyleneInspectionCreated = functions
       const sheetData = {
         timestamp: data.timestamp,
         inspectorName: data.inspectorName,
-        deviceInfo: data.deviceInfo || {},
-        webauthnVerified: data.webauthnVerified || false
+        deviceInfo: data.deviceInfo || {}
       };
 
       // 同步到 Google Sheets

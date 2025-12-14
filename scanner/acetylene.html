@@ -65,7 +65,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getFirestore, doc, updateDoc, collection, addDoc, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { isPlatformAuthenticatorAvailable, verifyWebAuthn } from './webauthn-utils.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
@@ -239,34 +238,6 @@
             if (!compressedPhotoBase64) return;
             uploadButton.disabled = true;
 
-            // 生物辨識驗證
-            const credentialId = localStorage.getItem('webauthn_credentialId');
-            const skippedBiometric = localStorage.getItem('webauthn_skipped');
-            let isWebAuthnVerified = false; // 追蹤驗證結果
-
-            if (credentialId && !skippedBiometric) {
-                try {
-                    uploadStatus.textContent = '請使用 Face ID 或 Touch ID 驗證身份...';
-                    uploadStatus.className = 'mt-4 text-center h-6 text-blue-600';
-
-                    await verifyWebAuthn(credentialId);
-                    isWebAuthnVerified = true; // 驗證成功
-
-                    uploadStatus.textContent = '✓ 身份驗證成功';
-                    uploadStatus.className = 'mt-4 text-center h-6 text-green-600';
-
-                    // 等待一秒讓用戶看到驗證成功訊息
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-
-                } catch (error) {
-                    console.error('生物辨識驗證失敗:', error);
-                    uploadStatus.textContent = `驗證失敗: ${error.message}`;
-                    uploadStatus.className = 'mt-4 text-center h-6 text-red-600';
-                    uploadButton.disabled = false;
-                    return; // 驗證失敗，停止巡檢
-                }
-            }
-
             uploadStatus.textContent = '正在上傳紀錄...';
             uploadStatus.className = 'mt-4 text-center h-6';
             const deviceInfo = getDeviceInfo();
@@ -275,8 +246,7 @@
                     inspectorName,
                     imageBase64: compressedPhotoBase64,
                     timestamp: serverTimestamp(),
-                    deviceInfo: deviceInfo,
-                    webauthnVerified: isWebAuthnVerified // 使用實際驗證結果
+                    deviceInfo: deviceInfo
                 });
                 await updateDoc(doc(db, 'inspectionPoints', 'acetylene'), {
                     status: 'inspected',

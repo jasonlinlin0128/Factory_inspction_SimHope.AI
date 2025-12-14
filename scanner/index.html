@@ -87,7 +87,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getFirestore, doc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { isPlatformAuthenticatorAvailable, verifyWebAuthn } from './webauthn-utils.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
@@ -102,6 +101,7 @@
         const mainMessage = document.getElementById('main-message');
         const reportSection = document.getElementById('abnormal-report-section');
         let db, auth, inspectorName, pointId, pointName;
+        let currentInspectionRecord = null; // 儲存本次巡檢記錄
 
         // 獲取裝置資訊（詳細版）
         function getDeviceInfo() {
@@ -201,7 +201,6 @@
         async function submitInspectionWithStatus(status, description = null, imageBase64 = null) {
             const pointRef = doc(db, 'inspectionPoints', pointId);
             const deviceInfo = getDeviceInfo();
-            const isWebAuthnVerified = localStorage.getItem('inspection_webauthn_verified') === 'true';
 
             try {
                 mainMessage.textContent = '正在儲存巡檢記錄...';
@@ -214,11 +213,29 @@
                     inspectorName,
                     timestamp: serverTimestamp(),
                     deviceInfo: deviceInfo,
-                    webauthnVerified: isWebAuthnVerified,
                     status: status,
                     description: description,
                     imageBase64: imageBase64
                 });
+
+                // 儲存本次巡檢記錄到全域變數
+                const pointsMap = {
+                    'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
+                    'crane-4': '天車-4', 'crane-5': '天車-5',
+                    'acetylene': '乙炔區',
+                    'hook-safety': '吊鉤安全高度',
+                    'emergency-stop': '急停開關',
+                    'factory-lights': '工廠電燈'
+                };
+
+                currentInspectionRecord = {
+                    pointId: pointId,
+                    pointName: pointsMap[pointId] || pointId,
+                    status: status,
+                    description: description,
+                    imageBase64: imageBase64,
+                    timestamp: new Date()
+                };
 
                 // 顯示完成訊息
                 document.querySelector('.loader').style.display = 'none';
@@ -237,9 +254,9 @@
                 document.getElementById('status-selection').classList.add('hidden');
                 document.getElementById('abnormal-details').classList.add('hidden');
 
-                // 顯示「查看我的回報」按鈕
+                // 顯示「查看本次記錄」按鈕
                 const myReportsButton = document.createElement('button');
-                myReportsButton.textContent = '查看我的回報';
+                myReportsButton.textContent = '查看本次記錄';
                 myReportsButton.className = 'mt-6 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg w-full';
                 myReportsButton.onclick = openMyReportsModal;
                 mainMessage.parentElement.appendChild(myReportsButton);
@@ -253,34 +270,6 @@
         }
 
         async function handleStandardInspection() {
-            // 生物辨識驗證
-            const credentialId = localStorage.getItem('webauthn_credentialId');
-            const skippedBiometric = localStorage.getItem('webauthn_skipped');
-            let isWebAuthnVerified = false; // 追蹤驗證結果
-
-            if (credentialId && !skippedBiometric) {
-                try {
-                    mainMessage.textContent = '請使用 Face ID 或 Touch ID 驗證身份...';
-                    mainMessage.className = 'text-2xl font-bold text-center mb-6 text-blue-400';
-
-                    await verifyWebAuthn(credentialId);
-                    isWebAuthnVerified = true; // 驗證成功
-
-                    mainMessage.textContent = '✓ 身份驗證成功';
-                    mainMessage.className = 'text-2xl font-bold text-center mb-6 text-green-400';
-
-                    // 等待一秒讓用戶看到驗證成功訊息
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-
-                } catch (error) {
-                    console.error('生物辨識驗證失敗:', error);
-                    mainMessage.textContent = `驗證失敗: ${error.message}`;
-                    mainMessage.className = 'text-2xl font-bold text-center mb-6 text-red-400';
-                    mainMessage.parentElement.querySelector('.loader').style.display = 'none';
-                    return; // 驗證失敗，停止巡檢
-                }
-            }
-
             const pointRef = doc(db, 'inspectionPoints', pointId);
             const deviceInfo = getDeviceInfo();
             try {
@@ -294,10 +283,7 @@
                     deviceInfo: deviceInfo
                 });
 
-                // 儲存生物辨識驗證結果（供後續使用）
-                localStorage.setItem('inspection_webauthn_verified', isWebAuthnVerified.toString());
-
-                // 隱藏 loader，顯示狀態選擇按鈕
+                // 顯示狀態選擇按鈕
                 mainMessage.textContent = `[${pointId}] 巡檢點已確認`;
                 mainMessage.parentElement.querySelector('.loader').style.display = 'none';
                 mainMessage.className = 'text-xl text-gray-300';
@@ -374,64 +360,43 @@
             }
         }
 
-        async function openMyReportsModal() {
+        function openMyReportsModal() {
             const modal = document.getElementById('my-reports-modal');
             const body = document.getElementById('my-reports-body');
 
             modal.classList.remove('hidden');
-            body.innerHTML = '<p class="text-slate-500 text-center py-10">正在載入...</p>';
 
-            try {
-                const q = query(
-                    collection(db, 'abnormal_reports'),
-                    where('inspectorName', '==', inspectorName)
-                );
-                const snapshot = await getDocs(q);
-
-                let reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                reports.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
-
-                if (reports.length === 0) {
-                    body.innerHTML = '<p class="text-slate-500 text-center py-10">您尚未回報任何異常。</p>';
-                    return;
-                }
-
-                body.innerHTML = '';
-                reports.forEach(report => {
-                    const isResolved = report.status === 'resolved';
-                    const statusBadge = isResolved
-                        ? '<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">已處理</span>'
-                        : '<span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">處理中</span>';
-
-                    const resolutionHTML = isResolved ? `
-                        <div class="mt-3 p-3 bg-green-50 rounded-md border border-green-200">
-                            <p class="text-sm font-semibold text-green-800">處理說明：</p>
-                            <p class="text-sm text-slate-700 mt-1">${report.resolution}</p>
-                            <p class="text-xs text-slate-500 mt-2">處理人：${report.resolvedBy} | ${report.resolvedAt.toDate().toLocaleString('zh-TW', { hour12: false })}</p>
-                        </div>
-                    ` : '';
-
-                    const imageHTML = report.imageBase64 ? `<img src="${report.imageBase64}" class="w-full rounded-md mt-2 border border-slate-200">` : '';
-
-                    const card = `
-                        <div class="border border-slate-200 p-4 rounded-lg bg-white">
-                            <div class="flex justify-between items-start mb-2">
-                                <h3 class="font-bold text-lg text-slate-800">${report.pointName}</h3>
-                                ${statusBadge}
-                            </div>
-                            <p class="text-sm text-slate-500 mb-2">${report.timestamp.toDate().toLocaleString('zh-TW', { hour12: false })}</p>
-                            <p class="text-slate-800 bg-slate-100 p-2 rounded-md">${report.description}</p>
-                            ${imageHTML}
-                            ${resolutionHTML}
-                        </div>
-                    `;
-                    body.insertAdjacentHTML('beforeend', card);
-                });
-
-            } catch (error) {
-                console.error('載入失敗:', error);
-                body.innerHTML = `<p class="text-red-500 text-center py-10">載入失敗: ${error.message}</p>`;
+            if (!currentInspectionRecord) {
+                body.innerHTML = '<p class="text-slate-500 text-center py-10">無本次巡檢記錄。</p>';
+                return;
             }
+
+            const record = currentInspectionRecord;
+            const statusBadge = record.status === 'normal'
+                ? '<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">正常</span>'
+                : '<span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">異常</span>';
+
+            const descriptionHTML = record.description
+                ? `<p class="text-slate-800 bg-slate-100 p-2 rounded-md mt-2">${record.description}</p>`
+                : '';
+
+            const imageHTML = record.imageBase64
+                ? `<img src="${record.imageBase64}" class="w-full rounded-md mt-2 border border-slate-200">`
+                : '';
+
+            const card = `
+                <div class="border border-slate-200 p-4 rounded-lg bg-white">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="font-bold text-lg text-slate-800">${record.pointName}</h3>
+                        ${statusBadge}
+                    </div>
+                    <p class="text-sm text-slate-500 mb-2">${record.timestamp.toLocaleString('zh-TW', { hour12: false })}</p>
+                    ${descriptionHTML}
+                    ${imageHTML}
+                </div>
+            `;
+
+            body.innerHTML = card;
         }
 
         async function main() {
@@ -558,7 +523,7 @@
     <div id="my-reports-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <header class="flex items-center justify-between p-5 border-b bg-white rounded-t-lg">
-                <h2 class="text-xl font-bold text-slate-800">我的異常回報</h2>
+                <h2 class="text-xl font-bold text-slate-800">本次巡檢記錄</h2>
                 <button id="close-my-reports-modal" class="text-slate-400 hover:text-slate-800 text-3xl leading-none">&times;</button>
             </header>
             <main id="my-reports-body" class="p-6 overflow-y-auto space-y-4 bg-slate-50 flex-1"></main>

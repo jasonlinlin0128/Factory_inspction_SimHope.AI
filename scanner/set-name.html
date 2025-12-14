@@ -27,29 +27,12 @@
 
             <p id="status-message" class="text-center mt-2 h-5"></p>
         </div>
-
-        <!-- 生物辨識設定區 -->
-        <div id="biometric-section" class="hidden bg-white p-8 rounded-lg border border-blue-200 shadow-sm mt-4">
-            <h3 class="text-lg font-bold mb-2 text-blue-800 text-center">設定生物辨識驗證</h3>
-            <p class="text-sm text-slate-600 mb-4 text-center">
-                使用 Face ID 或 Touch ID 可以讓每次巡檢時更快速、更安全地驗證身份。
-            </p>
-            <div class="flex gap-3">
-                <button type="button" id="skip-biometric" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2 px-4 rounded-lg">
-                    暫不設定
-                </button>
-                <button type="button" id="register-biometric" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
-                    設定生物辨識
-                </button>
-            </div>
-        </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { isPlatformAuthenticatorAvailable, registerWebAuthn } from './webauthn-utils.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
@@ -69,9 +52,6 @@
         const nameInput = document.getElementById('inspector-name-input');
         const saveButton = document.getElementById('save-name-button');
         const statusMessage = document.getElementById('status-message');
-        const biometricSection = document.getElementById('biometric-section');
-        const skipBiometricButton = document.getElementById('skip-biometric');
-        const registerBiometricButton = document.getElementById('register-biometric');
 
         let currentName = '';
 
@@ -79,7 +59,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const redirectUrl = urlParams.get('redirectUrl');
 
-        // 第一步：儲存姓名
+        // 儲存姓名
         async function saveNameAndCheckBiometric() {
             currentName = nameInput.value.trim();
 
@@ -91,51 +71,16 @@
 
             localStorage.setItem('inspectorName', currentName);
 
-            // 檢查是否支援生物辨識
-            const supported = await isPlatformAuthenticatorAvailable();
+            // 清理舊的生物辨識資料
+            localStorage.removeItem('webauthn_credentialId');
+            localStorage.removeItem('webauthn_skipped');
+            localStorage.removeItem('inspection_webauthn_verified');
 
-            if (supported) {
-                // 顯示生物辨識註冊選項
-                nameInput.disabled = true;
-                saveButton.classList.add('hidden');
-                biometricSection.classList.remove('hidden');
-                statusMessage.textContent = '✓ 姓名已儲存！是否要設定生物辨識驗證？';
-                statusMessage.className = 'text-center mt-2 h-5 text-green-500';
-            } else {
-                // 直接完成設定
-                redirectBack();
-            }
+            statusMessage.textContent = '✓ 姓名已儲存！';
+            statusMessage.className = 'text-center mt-2 h-5 text-green-500';
+
+            setTimeout(redirectBack, 1000);
         }
-
-        // 跳過生物辨識
-        skipBiometricButton.addEventListener('click', () => {
-            localStorage.setItem('webauthn_skipped', 'true');
-            redirectBack();
-        });
-
-        // 註冊生物辨識
-        registerBiometricButton.addEventListener('click', async () => {
-            try {
-                registerBiometricButton.disabled = true;
-                registerBiometricButton.textContent = '正在設定...';
-                statusMessage.textContent = '請使用 Face ID 或 Touch ID 進行驗證...';
-                statusMessage.className = 'text-center mt-2 h-5 text-blue-500';
-
-                await registerWebAuthn(currentName, db);
-
-                statusMessage.textContent = '✓ 生物辨識設定完成！';
-                statusMessage.className = 'text-center mt-2 h-5 text-green-500';
-
-                setTimeout(redirectBack, 1500);
-
-            } catch (error) {
-                console.error('註冊失敗:', error);
-                statusMessage.textContent = `設定失敗: ${error.message}`;
-                statusMessage.className = 'text-center mt-2 h-5 text-red-500';
-                registerBiometricButton.disabled = false;
-                registerBiometricButton.textContent = '重試設定';
-            }
-        });
 
         function redirectBack() {
             if (redirectUrl) {
