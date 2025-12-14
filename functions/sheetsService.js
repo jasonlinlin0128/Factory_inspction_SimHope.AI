@@ -87,10 +87,13 @@ async function logStandardInspection(data) {
     data.deviceInfo?.os || '',
     data.deviceInfo?.model || '',
     data.webauthnVerified ? '是' : '否',
-    '', // 異常描述（標準巡檢無）
-    '', // 處理狀態
-    '', // 處理人
-    '', // 處理說明
+    // 新增巡檢狀態欄位
+    data.status === 'abnormal' ? '異常' : '正常',  // 巡檢狀態
+    data.description || '',                         // 異常描述
+    data.hasImage || '否',                          // 是否有照片
+    '', // 處理狀態（空白）
+    '', // 處理人（空白）
+    '', // 處理說明（空白）
   ];
 
   return await appendToSheet([row]);

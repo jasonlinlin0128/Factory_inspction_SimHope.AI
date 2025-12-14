@@ -32,7 +32,44 @@
     <div id="message-container" class="text-center flex flex-col items-center space-y-6 w-full max-w-md">
         <div class="loader"></div>
         <p id="main-message" class="text-xl text-gray-300">正在處理巡檢點...</p>
-        
+
+        <!-- 狀態選擇區塊 (巡檢完成後顯示) -->
+        <div id="status-selection" class="hidden w-full bg-gray-900 p-6 rounded-lg border border-gray-700">
+            <p class="text-center text-lg font-semibold mb-4">請標記此次巡檢狀態：</p>
+            <div class="flex gap-4">
+                <button id="normal-button" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-lg text-lg transition-colors shadow-lg">
+                    ✅ 正常
+                </button>
+                <button id="abnormal-button" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 rounded-lg text-lg transition-colors shadow-lg">
+                    ❌ 異常
+                </button>
+            </div>
+        </div>
+
+        <!-- 異常詳情表單 (選擇異常後顯示) -->
+        <div id="abnormal-details" class="hidden w-full bg-gray-900 p-6 rounded-lg border border-red-700">
+            <h3 class="text-lg font-bold text-red-400 mb-4">異常巡檢詳情</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-2">問題描述 *</label>
+                    <textarea id="abnormal-description" required class="w-full bg-gray-800 text-white p-3 rounded-md border border-gray-600 focus:ring-2 focus:ring-red-500 focus:outline-none" rows="4" placeholder="請詳細描述發現的問題..."></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-2">上傳照片（選填）</label>
+                    <input type="file" id="abnormal-photo" accept="image/*,video/*" capture="environment" class="hidden">
+                    <button id="abnormal-photo-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors">📷 拍攝照片</button>
+                    <div id="abnormal-photo-preview-container" class="hidden mt-3">
+                        <img id="abnormal-photo-preview" class="w-full rounded-md border border-gray-600">
+                        <button id="remove-abnormal-photo" class="w-full mt-2 bg-gray-700 hover:bg-gray-600 text-white py-1 px-3 rounded-md text-sm transition-colors">移除照片</button>
+                    </div>
+                </div>
+                <button id="submit-abnormal-inspection" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-colors shadow-lg">
+                    提交異常巡檢
+                </button>
+                <p id="abnormal-status" class="text-center text-sm h-5"></p>
+            </div>
+        </div>
+
         <!-- 異常回報區塊 (預設隱藏) -->
         <div id="abnormal-report-section" class="hidden w-full bg-gray-900 p-4 rounded-lg border border-gray-700 text-left">
             <h3 class="text-lg font-bold text-yellow-400 mb-3">回報異常狀況</h3>
@@ -160,6 +197,61 @@
             });
         }
 
+        // 提交巡檢記錄（包含狀態）
+        async function submitInspectionWithStatus(status, description = null, imageBase64 = null) {
+            const pointRef = doc(db, 'inspectionPoints', pointId);
+            const deviceInfo = getDeviceInfo();
+            const isWebAuthnVerified = localStorage.getItem('inspection_webauthn_verified') === 'true';
+
+            try {
+                mainMessage.textContent = '正在儲存巡檢記錄...';
+                mainMessage.className = 'text-xl text-gray-300';
+                document.querySelector('.loader').style.display = 'block';
+
+                // 寫入巡檢記錄
+                await addDoc(collection(db, 'standard_inspection_log'), {
+                    pointId,
+                    inspectorName,
+                    timestamp: serverTimestamp(),
+                    deviceInfo: deviceInfo,
+                    webauthnVerified: isWebAuthnVerified,
+                    status: status,
+                    description: description,
+                    imageBase64: imageBase64
+                });
+
+                // 顯示完成訊息
+                document.querySelector('.loader').style.display = 'none';
+
+                if (status === 'normal') {
+                    mainMessage.textContent = `✅ [${pointId}] 巡檢完成 - 正常`;
+                    mainMessage.className = 'text-2xl text-green-400 font-bold';
+                } else {
+                    mainMessage.textContent = `⚠️ [${pointId}] 已記錄異常狀況`;
+                    mainMessage.className = 'text-2xl text-yellow-400 font-bold';
+                }
+
+                if ('vibrate' in navigator) navigator.vibrate(200);
+
+                // 隱藏所有表單
+                document.getElementById('status-selection').classList.add('hidden');
+                document.getElementById('abnormal-details').classList.add('hidden');
+
+                // 顯示「查看我的回報」按鈕
+                const myReportsButton = document.createElement('button');
+                myReportsButton.textContent = '查看我的回報';
+                myReportsButton.className = 'mt-6 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg w-full';
+                myReportsButton.onclick = openMyReportsModal;
+                mainMessage.parentElement.appendChild(myReportsButton);
+
+            } catch (error) {
+                document.querySelector('.loader').style.display = 'none';
+                mainMessage.textContent = `儲存失敗: ${error.message}`;
+                mainMessage.className = 'text-xl text-red-400';
+                console.error('儲存巡檢記錄失敗:', error);
+            }
+        }
+
         async function handleStandardInspection() {
             // 生物辨識驗證
             const credentialId = localStorage.getItem('webauthn_credentialId');
@@ -193,38 +285,23 @@
             const deviceInfo = getDeviceInfo();
             try {
                 mainMessage.textContent = `正在更新 [${pointId}]...`;
+
+                // 更新巡檢點狀態
                 await updateDoc(pointRef, {
                     status: 'inspected',
                     inspectorName,
                     timestamp: serverTimestamp(),
                     deviceInfo: deviceInfo
                 });
-                await addDoc(collection(db, 'standard_inspection_log'), {
-                    pointId,
-                    inspectorName,
-                    timestamp: serverTimestamp(),
-                    deviceInfo: deviceInfo,
-                    webauthnVerified: isWebAuthnVerified // 使用實際驗證結果
-                });
-                mainMessage.textContent = `[${pointId}] 已巡檢成功！`;
-                mainMessage.parentElement.querySelector('.loader').style.display = 'none';
-                mainMessage.className = 'text-2xl text-green-400';
-                if ('vibrate' in navigator) navigator.vibrate(200);
-                const reportButton = document.createElement('button');
-                reportButton.textContent = '回報異常狀況';
-                reportButton.className = 'mt-6 bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded-lg';
-                reportButton.onclick = () => {
-                    reportSection.classList.remove('hidden');
-                    reportButton.style.display = 'none';
-                };
-                mainMessage.parentElement.appendChild(reportButton);
 
-                // 新增「查看我的回報」按鈕
-                const myReportsButton = document.createElement('button');
-                myReportsButton.textContent = '查看我的回報';
-                myReportsButton.className = 'mt-3 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg w-full';
-                myReportsButton.onclick = openMyReportsModal;
-                mainMessage.parentElement.appendChild(myReportsButton);
+                // 儲存生物辨識驗證結果（供後續使用）
+                localStorage.setItem('inspection_webauthn_verified', isWebAuthnVerified.toString());
+
+                // 隱藏 loader，顯示狀態選擇按鈕
+                mainMessage.textContent = `[${pointId}] 巡檢點已確認`;
+                mainMessage.parentElement.querySelector('.loader').style.display = 'none';
+                mainMessage.className = 'text-xl text-gray-300';
+                document.getElementById('status-selection').classList.remove('hidden');
             } catch (error) {
                 mainMessage.textContent = `更新失敗: ${error.code || error.message}`;
                 mainMessage.parentElement.querySelector('.loader').style.display = 'none';
@@ -389,6 +466,65 @@
                 mainMessage.textContent = `連線失敗: ${error.code || error.message}`;
             }
         }
+
+        // ========== 綁定狀態選擇和異常巡檢事件 ==========
+
+        // 「正常」按鈕點擊
+        document.getElementById('normal-button').addEventListener('click', () => {
+            submitInspectionWithStatus('normal');
+        });
+
+        // 「異常」按鈕點擊 - 顯示異常詳情表單
+        document.getElementById('abnormal-button').addEventListener('click', () => {
+            document.getElementById('status-selection').classList.add('hidden');
+            document.getElementById('abnormal-details').classList.remove('hidden');
+        });
+
+        // 「拍攝照片」按鈕點擊
+        document.getElementById('abnormal-photo-button').addEventListener('click', () => {
+            document.getElementById('abnormal-photo').click();
+        });
+
+        // 照片選擇後處理
+        let abnormalPhotoBase64 = null;
+        document.getElementById('abnormal-photo').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                try {
+                    // 壓縮照片
+                    abnormalPhotoBase64 = await compressImage(file);
+
+                    // 顯示預覽
+                    document.getElementById('abnormal-photo-preview').src = abnormalPhotoBase64;
+                    document.getElementById('abnormal-photo-preview-container').classList.remove('hidden');
+                } catch (error) {
+                    console.error('照片處理失敗:', error);
+                    alert('照片處理失敗，請重試');
+                }
+            }
+        });
+
+        // 「移除照片」按鈕點擊
+        document.getElementById('remove-abnormal-photo').addEventListener('click', () => {
+            abnormalPhotoBase64 = null;
+            document.getElementById('abnormal-photo').value = '';
+            document.getElementById('abnormal-photo-preview-container').classList.add('hidden');
+        });
+
+        // 「提交異常巡檢」按鈕點擊
+        document.getElementById('submit-abnormal-inspection').addEventListener('click', async () => {
+            const description = document.getElementById('abnormal-description').value.trim();
+
+            // 驗證描述是否填寫
+            if (!description) {
+                document.getElementById('abnormal-status').textContent = '請填寫問題描述';
+                document.getElementById('abnormal-status').className = 'text-center text-sm text-red-400';
+                return;
+            }
+
+            // 提交異常巡檢
+            await submitInspectionWithStatus('abnormal', description, abnormalPhotoBase64);
+        });
 
         // 綁定異常回報相關事件
         document.getElementById('report-photo-button').addEventListener('click', () => {

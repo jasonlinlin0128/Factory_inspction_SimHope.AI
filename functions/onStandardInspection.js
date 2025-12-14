@@ -35,7 +35,11 @@ exports.onStandardInspectionCreated = functions
         pointName: pointNames[data.pointId] || data.pointId,
         inspectorName: data.inspectorName,
         deviceInfo: data.deviceInfo || {},
-        webauthnVerified: data.webauthnVerified || false
+        webauthnVerified: data.webauthnVerified || false,
+        // 新增巡檢狀態欄位（向後相容：預設為 normal）
+        status: data.status || 'normal',
+        description: data.description || '',
+        hasImage: data.imageBase64 ? '是' : '否'
       };
 
       // 同步到 Google Sheets
