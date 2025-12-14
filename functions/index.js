@@ -142,6 +142,7 @@ exports.dailyResetInspectionPoints = scheduledReset.dailyResetInspectionPoints;
 // 匯入巡檢紀錄同步功能
 const onStandardInspection = require('./onStandardInspection');
 exports.onStandardInspectionCreated = onStandardInspection.onStandardInspectionCreated;
+exports.onStandardInspectionUpdated = onStandardInspection.onStandardInspectionUpdated;
 
 const onAcetyleneInspection = require('./onAcetyleneInspection');
 exports.onAcetyleneInspectionCreated = onAcetyleneInspection.onAcetyleneInspectionCreated;

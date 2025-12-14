@@ -98,6 +98,77 @@ async function logStandardInspection(data) {
 }
 
 /**
+ * 更新標準巡檢紀錄
+ * @param {Object} data - 更新後的資料
+ * @param {Object} originalTimestamp - 原始時間戳記（用於尋找記錄）
+ */
+async function updateStandardInspection(data, originalTimestamp) {
+  const sheets = getSheetsClient();
+  if (!sheets) {
+    console.log('無法連接 Google Sheets，跳過同步');
+    return false;
+  }
+
+  try {
+    // 讀取所有資料找到對應的巡檢記錄
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET_NAME}!A:M`,
+    });
+
+    const rows = response.data.values || [];
+
+    // 尋找符合的資料列（根據時間、類型、巡檢點、巡檢員匹配）
+    const targetTime = formatDateTime(originalTimestamp);
+    const targetType = '標準巡檢';
+    const targetPoint = data.pointName || data.pointId;
+    const targetInspector = data.inspectorName;
+
+    let rowIndex = -1;
+    for (let i = 1; i < rows.length; i++) {  // 從第 2 列開始（跳過表頭）
+      const row = rows[i];
+      if (row[0] === targetTime &&           // A欄 - 時間
+          row[1] === targetType &&            // B欄 - 類型
+          row[2] === targetPoint &&           // C欄 - 巡檢點
+          row[3] === targetInspector) {       // D欄 - 巡檢員
+        rowIndex = i + 1; // Sheets 的 row index 從 1 開始
+        break;
+      }
+    }
+
+    if (rowIndex === -1) {
+      console.log('找不到對應的巡檢記錄');
+      console.log('目標時間:', targetTime);
+      console.log('目標巡檢點:', targetPoint);
+      console.log('目標巡檢員:', targetInspector);
+      return false;
+    }
+
+    console.log(`找到對應記錄於第 ${rowIndex} 列，準備更新`);
+
+    // 更新巡檢狀態、異常描述、照片欄位（H, I, J）
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET_NAME}!H${rowIndex}:J${rowIndex}`,
+      valueInputOption: 'RAW',
+      resource: {
+        values: [[
+          data.status === 'abnormal' ? '異常' : '正常',  // H - 巡檢狀態
+          data.description || '',                         // I - 異常描述
+          data.hasImage || '否'                           // J - 照片
+        ]]
+      }
+    });
+
+    console.log(`成功更新標準巡檢記錄（第 ${rowIndex} 列）`);
+    return true;
+  } catch (error) {
+    console.error('更新標準巡檢記錄失敗:', error.message);
+    return false;
+  }
+}
+
+/**
  * 寫入乙炔區巡檢紀錄
  */
 async function logAcetyleneInspection(data) {
@@ -323,6 +394,7 @@ async function initializeSheetHeaders() {
 
 module.exports = {
   logStandardInspection,
+  updateStandardInspection,
   logAcetyleneInspection,
   logAbnormalReport,
   updateAbnormalResolution,

@@ -57,3 +57,68 @@ exports.onStandardInspectionCreated = functions
       return null;
     }
   });
+
+/**
+ * 標準巡檢紀錄更新觸發器
+ * 當 standard_inspection_log 更新時自動同步到 Google Sheets
+ */
+exports.onStandardInspectionUpdated = functions
+  .region('asia-east1')
+  .firestore
+  .document('standard_inspection_log/{logId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+
+    try {
+      console.log('偵測到標準巡檢紀錄更新:', context.params.logId);
+
+      // 檢查是否有實質變更
+      const statusChanged = before.status !== after.status;
+      const descChanged = before.description !== after.description;
+      const imageChanged = (before.imageBase64 ? '是' : '否') !== (after.imageBase64 ? '是' : '否');
+
+      if (!statusChanged && !descChanged && !imageChanged) {
+        console.log('無實質變更，跳過 Sheets 同步');
+        return null;
+      }
+
+      console.log('變更內容:', {
+        statusChanged,
+        descChanged,
+        imageChanged,
+        oldStatus: before.status,
+        newStatus: after.status
+      });
+
+      // 準備更新資料
+      const sheetData = {
+        timestamp: after.timestamp,
+        pointId: after.pointId,
+        pointName: pointNames[after.pointId] || after.pointId,
+        inspectorName: after.inspectorName,
+        deviceInfo: after.deviceInfo || {},
+        status: after.status || 'normal',
+        description: after.description || '',
+        hasImage: after.imageBase64 ? '是' : '否'
+      };
+
+      // 更新 Google Sheets
+      const success = await sheetsService.updateStandardInspection(
+        sheetData,
+        before.timestamp  // 用原始時間戳記尋找對應記錄
+      );
+
+      if (success) {
+        console.log(`標準巡檢紀錄已更新到 Google Sheets: ${after.pointId}`);
+      } else {
+        console.warn('Google Sheets 更新失敗（可能找不到對應記錄）');
+      }
+
+      return null;
+
+    } catch (error) {
+      console.error('處理標準巡檢更新時發生錯誤:', error);
+      return null;
+    }
+  });
