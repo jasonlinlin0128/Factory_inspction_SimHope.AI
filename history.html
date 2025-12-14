@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>巡檢歷史紀錄 - 工廠設備巡檢系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div class="container mx-auto p-4 max-w-7xl">
+        <header class="mb-6">
+            <h1 class="text-3xl font-bold text-slate-800 mb-2">巡檢歷史紀錄</h1>
+            <button onclick="window.location.href='index.html'" class="text-blue-600 hover:underline">← 返回儀表板</button>
+        </header>
+
+        <!-- 篩選區 -->
+        <section class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">篩選條件</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <!-- 時間範圍 -->
+                <div>
+                    <label class="block text-sm font-semibold mb-2">時間範圍</label>
+                    <select id="time-range" class="w-full p-2 border border-slate-300 rounded-md">
+                        <option value="7">過去 7 天</option>
+                        <option value="15">過去 15 天</option>
+                        <option value="30" selected>過去 30 天</option>
+                        <option value="custom">自訂範圍</option>
+                    </select>
+                </div>
+
+                <!-- 巡檢點篩選 -->
+                <div>
+                    <label class="block text-sm font-semibold mb-2">巡檢點</label>
+                    <select id="point-filter" class="w-full p-2 border border-slate-300 rounded-md">
+                        <option value="">全部</option>
+                        <option value="crane-1">天車-1</option>
+                        <option value="crane-2">天車-2</option>
+                        <option value="crane-3">天車-3</option>
+                        <option value="crane-4">天車-4</option>
+                        <option value="crane-5">天車-5</option>
+                        <option value="acetylene">乙炔區</option>
+                        <option value="air-compressor">空壓機</option>
+                        <option value="hook-safety">吊鉤安全高度</option>
+                        <option value="emergency-stop">急停開關</option>
+                        <option value="factory-lights">工廠電燈</option>
+                    </select>
+                </div>
+
+                <!-- 巡檢員篩選 -->
+                <div>
+                    <label class="block text-sm font-semibold mb-2">巡檢員</label>
+                    <select id="inspector-filter" class="w-full p-2 border border-slate-300 rounded-md">
+                        <option value="">全部</option>
+                        <!-- 動態載入 -->
+                    </select>
+                </div>
+            </div>
+
+            <!-- 自訂日期範圍 -->
+            <div id="custom-date-range" class="hidden grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-semibold mb-2">開始日期</label>
+                    <input type="date" id="start-date" class="w-full p-2 border border-slate-300 rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold mb-2">結束日期</label>
+                    <input type="date" id="end-date" class="w-full p-2 border border-slate-300 rounded-md">
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button id="apply-filter" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">
+                    套用篩選
+                </button>
+                <button id="export-excel" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg">
+                    匯出 Excel
+                </button>
+            </div>
+        </section>
+
+        <!-- 結果統計 -->
+        <section class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div>
+                    <p class="text-3xl font-bold text-blue-600" id="total-count">0</p>
+                    <p class="text-sm text-slate-600">總巡檢次數</p>
+                </div>
+                <div>
+                    <p class="text-3xl font-bold text-green-600" id="unique-inspectors">0</p>
+                    <p class="text-sm text-slate-600">巡檢員人數</p>
+                </div>
+                <div>
+                    <p class="text-3xl font-bold text-purple-600" id="unique-points">0</p>
+                    <p class="text-sm text-slate-600">巡檢點數量</p>
+                </div>
+                <div>
+                    <p class="text-3xl font-bold text-orange-600" id="acetylene-count">0</p>
+                    <p class="text-sm text-slate-600">乙炔區檢查</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 紀錄表格 -->
+        <section class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-slate-100 border-b">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-sm font-semibold">時間</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold">巡檢點</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold">巡檢員</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold">裝置資訊</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold">照片</th>
+                        </tr>
+                    </thead>
+                    <tbody id="records-table-body" class="divide-y divide-slate-200">
+                        <!-- 動態載入 -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="loading-indicator" class="text-center py-8 text-slate-500">
+                正在載入資料...
+            </div>
+            <div id="no-data-indicator" class="hidden text-center py-8 text-slate-500">
+                沒有符合條件的紀錄
+            </div>
+        </section>
+    </div>
+
+    <!-- 照片查看 Modal -->
+    <div id="photo-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 hidden z-50">
+        <div class="relative max-w-4xl w-full">
+            <button id="close-photo-modal" class="absolute top-4 right-4 text-white text-4xl hover:text-slate-300">&times;</button>
+            <img id="photo-modal-img" src="" class="w-full h-auto rounded-lg">
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, collection, query, where, orderBy, getDocs, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
+            authDomain: "factory-inspection-system.firebaseapp.com",
+            projectId: "factory-inspection-system",
+            storageBucket: "factory-inspection-system.firebasestorage.app",
+            messagingSenderId: "1094359521084",
+            appId: "1:1094359521084:web:f24d8dd4fd68c3e670f039"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        await signInAnonymously(auth);
+
+        const pointsMap = {
+            'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
+            'crane-4': '天車-4', 'crane-5': '天車-5',
+            'acetylene': '乙炔區', 'air-compressor': '空壓機',
+            'hook-safety': '吊鉤安全高度',
+            'emergency-stop': '急停開關', 'factory-lights': '工廠電燈'
+        };
+
+        let currentRecords = [];
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadInspectorList();
+            await loadRecords();
+        });
+
+        // 時間範圍切換
+        document.getElementById('time-range').addEventListener('change', (e) => {
+            const customRange = document.getElementById('custom-date-range');
+            if (e.target.value === 'custom') {
+                customRange.classList.remove('hidden');
+            } else {
+                customRange.classList.add('hidden');
+            }
+        });
+
+        // 套用篩選
+        document.getElementById('apply-filter').addEventListener('click', loadRecords);
+
+        // 匯出 Excel
+        document.getElementById('export-excel').addEventListener('click', exportToExcel);
+
+        // 載入巡檢員清單
+        async function loadInspectorList() {
+            const inspectorSet = new Set();
+
+            const standardSnapshot = await getDocs(collection(db, 'standard_inspection_log'));
+            standardSnapshot.forEach(doc => {
+                if (doc.data().inspectorName) {
+                    inspectorSet.add(doc.data().inspectorName);
+                }
+            });
+
+            const acetyleneSnapshot = await getDocs(collection(db, 'acetylene_log'));
+            acetyleneSnapshot.forEach(doc => {
+                if (doc.data().inspectorName) {
+                    inspectorSet.add(doc.data().inspectorName);
+                }
+            });
+
+            const select = document.getElementById('inspector-filter');
+            inspectorSet.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+        }
+
+        // 載入紀錄
+        async function loadRecords() {
+            document.getElementById('loading-indicator').classList.remove('hidden');
+            document.getElementById('no-data-indicator').classList.add('hidden');
+            document.getElementById('records-table-body').innerHTML = '';
+
+            const timeRange = document.getElementById('time-range').value;
+            const pointFilter = document.getElementById('point-filter').value;
+            const inspectorFilter = document.getElementById('inspector-filter').value;
+
+            // 計算時間範圍
+            let startDate, endDate;
+            if (timeRange === 'custom') {
+                startDate = new Date(document.getElementById('start-date').value);
+                endDate = new Date(document.getElementById('end-date').value);
+                endDate.setHours(23, 59, 59, 999);
+            } else {
+                endDate = new Date();
+                startDate = new Date();
+                startDate.setDate(startDate.getDate() - parseInt(timeRange));
+                startDate.setHours(0, 0, 0, 0);
+            }
+
+            const startTimestamp = Timestamp.fromDate(startDate);
+            const endTimestamp = Timestamp.fromDate(endDate);
+
+            currentRecords = [];
+
+            // 查詢標準巡檢紀錄
+            let standardQuery = query(
+                collection(db, 'standard_inspection_log'),
+                where('timestamp', '>=', startTimestamp),
+                where('timestamp', '<=', endTimestamp),
+                orderBy('timestamp', 'desc')
+            );
+
+            if (pointFilter && pointFilter !== 'acetylene') {
+                standardQuery = query(
+                    collection(db, 'standard_inspection_log'),
+                    where('timestamp', '>=', startTimestamp),
+                    where('timestamp', '<=', endTimestamp),
+                    where('pointId', '==', pointFilter),
+                    orderBy('timestamp', 'desc')
+                );
+            }
+
+            const standardSnapshot = await getDocs(standardQuery);
+            standardSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (!inspectorFilter || data.inspectorName === inspectorFilter) {
+                    currentRecords.push({
+                        type: 'standard',
+                        ...data,
+                        id: doc.id
+                    });
+                }
+            });
+
+            // 查詢乙炔區紀錄
+            if (!pointFilter || pointFilter === 'acetylene') {
+                const acetyleneQuery = query(
+                    collection(db, 'acetylene_log'),
+                    where('timestamp', '>=', startTimestamp),
+                    where('timestamp', '<=', endTimestamp),
+                    orderBy('timestamp', 'desc')
+                );
+
+                const acetyleneSnapshot = await getDocs(acetyleneQuery);
+                acetyleneSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (!inspectorFilter || data.inspectorName === inspectorFilter) {
+                        currentRecords.push({
+                            type: 'acetylene',
+                            pointId: 'acetylene',
+                            ...data,
+                            id: doc.id
+                        });
+                    }
+                });
+            }
+
+            // 排序
+            currentRecords.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+
+            // 渲染表格
+            renderTable();
+            updateStatistics();
+
+            document.getElementById('loading-indicator').classList.add('hidden');
+            if (currentRecords.length === 0) {
+                document.getElementById('no-data-indicator').classList.remove('hidden');
+            }
+        }
+
+        // 渲染表格
+        function renderTable() {
+            const tbody = document.getElementById('records-table-body');
+            tbody.innerHTML = '';
+
+            currentRecords.forEach(record => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-slate-50';
+
+                const time = record.timestamp.toDate().toLocaleString('zh-TW', { hour12: false });
+                const pointName = pointsMap[record.pointId] || record.pointId;
+                const deviceInfo = record.deviceInfo ?
+                    `${record.deviceInfo.browser} / ${record.deviceInfo.os}` : '-';
+
+                const photoCell = record.imageBase64 ?
+                    `<button class="text-blue-600 hover:underline view-photo" data-image="${record.imageBase64}">查看</button>` :
+                    '-';
+
+                row.innerHTML = `
+                    <td class="px-4 py-3 text-sm">${time}</td>
+                    <td class="px-4 py-3 text-sm font-semibold">${pointName}</td>
+                    <td class="px-4 py-3 text-sm">${record.inspectorName}</td>
+                    <td class="px-4 py-3 text-sm text-slate-500">${deviceInfo}</td>
+                    <td class="px-4 py-3 text-sm">${photoCell}</td>
+                `;
+
+                tbody.appendChild(row);
+            });
+
+            // 綁定照片查看事件
+            document.querySelectorAll('.view-photo').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const modal = document.getElementById('photo-modal');
+                    const img = document.getElementById('photo-modal-img');
+                    img.src = e.target.dataset.image;
+                    modal.classList.remove('hidden');
+                });
+            });
+        }
+
+        // 更新統計
+        function updateStatistics() {
+            document.getElementById('total-count').textContent = currentRecords.length;
+
+            const inspectors = new Set(currentRecords.map(r => r.inspectorName));
+            document.getElementById('unique-inspectors').textContent = inspectors.size;
+
+            const points = new Set(currentRecords.map(r => r.pointId));
+            document.getElementById('unique-points').textContent = points.size;
+
+            const acetyleneCount = currentRecords.filter(r => r.type === 'acetylene').length;
+            document.getElementById('acetylene-count').textContent = acetyleneCount;
+        }
+
+        // 匯出 Excel
+        async function exportToExcel() {
+            // 動態載入 SheetJS
+            const script = document.createElement('script');
+            script.src = 'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js';
+            document.head.appendChild(script);
+
+            script.onload = () => {
+                const worksheet = XLSX.utils.json_to_sheet(
+                    currentRecords.map(record => ({
+                        '時間': record.timestamp.toDate().toLocaleString('zh-TW', { hour12: false }),
+                        '巡檢點': pointsMap[record.pointId] || record.pointId,
+                        '巡檢員': record.inspectorName,
+                        '瀏覽器': record.deviceInfo?.browser || '-',
+                        '作業系統': record.deviceInfo?.os || '-',
+                        '裝置型號': record.deviceInfo?.model || '-',
+                        '有照片': record.imageBase64 ? '是' : '否'
+                    }))
+                );
+
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, '巡檢紀錄');
+
+                const filename = `巡檢紀錄_${new Date().toISOString().split('T')[0]}.xlsx`;
+                XLSX.writeFile(workbook, filename);
+            };
+        }
+
+        // 關閉照片 Modal
+        document.getElementById('close-photo-modal').addEventListener('click', () => {
+            document.getElementById('photo-modal').classList.add('hidden');
+        });
+
+        document.getElementById('photo-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'photo-modal') {
+                document.getElementById('photo-modal').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

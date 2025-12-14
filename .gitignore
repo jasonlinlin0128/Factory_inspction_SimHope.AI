@@ -1,0 +1,24 @@
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
+# Service Account (安全性 - 絕對不要上傳到 GitHub)
+functions/service-account.json
+**/service-account*.json
+
+# Node modules
+node_modules/
+functions/node_modules/
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

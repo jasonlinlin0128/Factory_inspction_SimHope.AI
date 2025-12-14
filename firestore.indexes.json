@@ -1,0 +1,28 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "standard_inspection_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "timestamp", "order": "DESCENDING" },
+        { "fieldPath": "pointId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "standard_inspection_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "timestamp", "order": "DESCENDING" },
+        { "fieldPath": "inspectorName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "acetylene_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

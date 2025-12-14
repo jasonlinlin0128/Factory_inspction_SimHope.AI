@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const axios = require('axios');
+const sheetsService = require('./sheetsService');
 
 admin.initializeApp();
 
@@ -14,19 +15,27 @@ const LINE_TOKEN = 'c+EUNkjk5UErAmmB9wysCtztPsxWjmc5/LeJIwAhuTVlhP2Q6zamu991Ulnc
  */
 async function sendLineNotify(token, message) {
   try {
-    await axios.post('https://notify-api.line.me/api/notify',
+    console.log('準備發送 LINE 通知...');
+    const response = await axios.post('https://notify-api.line.me/api/notify',
       `message=${encodeURIComponent(message)}`,
       {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Authorization': `Bearer ${token}`
-        }
+        },
+        timeout: 10000
       }
     );
-    console.log('LINE 通知發送成功');
+    console.log('LINE 通知發送成功，狀態碼:', response.status);
+    return true;
   } catch (error) {
     console.error('LINE 通知發送失敗:', error.message);
-    throw error;
+    if (error.response) {
+      console.error('HTTP 狀態碼:', error.response.status);
+      console.error('回應內容:', error.response.data);
+    }
+    // 不拋出錯誤，讓 Function 繼續執行 Sheets 同步
+    return false;
   }
 }
 
@@ -59,6 +68,16 @@ ${report.description}
       // 發送 LINE 通知
       await sendLineNotify(LINE_TOKEN, message);
 
+      // 同步到 Google Sheets
+      await sheetsService.logAbnormalReport({
+        timestamp: report.timestamp,
+        pointId: report.pointId,
+        pointName: report.pointName,
+        inspectorName: report.inspectorName,
+        deviceInfo: report.deviceInfo || {},
+        description: report.description
+      });
+
       // 更新文件，標記通知已發送
       await snapshot.ref.update({ notificationSent: true });
 
@@ -84,13 +103,29 @@ exports.onAbnormalReportResolved = functions
     const before = change.before.data();
     const after = change.after.data();
 
+    console.log('異常回報更新觸發:', context.params.reportId);
+    console.log('Before status:', before.status);
+    console.log('After status:', after.status);
+
     // 只在狀態從 reported 變為 resolved 時觸發
     if (before.status === 'reported' && after.status === 'resolved') {
-      console.log('偵測到異常已處理:', context.params.reportId);
+      console.log('✓ 條件符合：偵測到異常已處理');
       console.log('處理人:', after.resolvedBy);
       console.log('原回報人可透過「我的回報」查看處理結果');
 
       try {
+        // 同步處理狀態到 Google Sheets
+        await sheetsService.updateAbnormalResolution({
+          timestamp: before.timestamp,
+          pointId: after.pointId,
+          pointName: after.pointName,
+          inspectorName: after.inspectorName,
+          deviceInfo: after.deviceInfo || {},
+          description: after.description,
+          resolvedBy: after.resolvedBy,
+          resolution: after.resolution
+        });
+
         // 只標記處理完成通知已發送（實際不發 LINE 通知）
         await change.after.ref.update({ resolutionNotificationSent: true });
         console.log('異常處理狀態已更新');
@@ -99,3 +134,14 @@ exports.onAbnormalReportResolved = functions
       }
     }
   });
+
+// 匯入定時重置功能
+const scheduledReset = require('./scheduledReset');
+exports.dailyResetInspectionPoints = scheduledReset.dailyResetInspectionPoints;
+
+// 匯入巡檢紀錄同步功能
+const onStandardInspection = require('./onStandardInspection');
+exports.onStandardInspectionCreated = onStandardInspection.onStandardInspectionCreated;
+
+const onAcetyleneInspection = require('./onAcetyleneInspection');
+exports.onAcetyleneInspectionCreated = onAcetyleneInspection.onAcetyleneInspectionCreated;
