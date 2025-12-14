@@ -179,10 +179,6 @@
                     </div>`;
                 grid.insertAdjacentHTML('beforeend', cardHTML);
             });
-
-            document.querySelectorAll('.view-details-button').forEach(button => {
-                button.addEventListener('click', () => openHistoryModal(button.dataset.id, button.dataset.name));
-            });
         }
 
         // **新增**：渲染異常回報卡片
@@ -234,8 +230,6 @@
                 const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 reports.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
                 renderAbnormalReports(reports);
-                // 觸發一次主儀表板重繪，以更新異常狀態外框
-                listenForUpdates();
             });
         }
 
@@ -369,6 +363,15 @@
                 const pointName = e.target.dataset.pointName;
                 const inspectorName = e.target.dataset.inspectorName;
                 openResolveModal(reportId, pointName, inspectorName);
+            }
+        });
+
+        // 綁定事件：點擊「查看紀錄」按鈕 (使用事件委託以支援動態生成的元素)
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('view-details-button')) {
+                const pointId = e.target.dataset.id;
+                const pointName = e.target.dataset.name;
+                openHistoryModal(pointId, pointName);
             }
         });
 
