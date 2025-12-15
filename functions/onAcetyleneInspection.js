@@ -20,7 +20,8 @@ exports.onAcetyleneInspectionCreated = functions
       const sheetData = {
         timestamp: data.timestamp,
         inspectorName: data.inspectorName,
-        deviceInfo: data.deviceInfo || {}
+        deviceInfo: data.deviceInfo || {},
+        imageBase64: data.imageBase64 || null  // 傳遞實際圖片數據（乙炔區必有照片）
       };
 
       // 同步到 Google Sheets

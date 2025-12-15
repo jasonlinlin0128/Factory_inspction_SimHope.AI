@@ -243,11 +243,13 @@
                 // 顯示完成訊息
                 document.querySelector('.loader').style.display = 'none';
 
+                const displayName = pointsMap[pointId] || pointId; // 取得中文名稱
+
                 if (status === 'normal') {
-                    mainMessage.textContent = `✅ [${pointId}] 巡檢完成 - 正常`;
+                    mainMessage.textContent = `✅ [${displayName}] 巡檢完成 - 正常`;
                     mainMessage.className = 'text-2xl text-green-400 font-bold';
                 } else {
-                    mainMessage.textContent = `⚠️ [${pointId}] 已記錄異常狀況`;
+                    mainMessage.textContent = `⚠️ [${displayName}] 已記錄異常狀況`;
                     mainMessage.className = 'text-2xl text-yellow-400 font-bold';
                 }
 
@@ -578,6 +580,18 @@
                 currentInspectionRecord.status = editingStatus;
                 currentInspectionRecord.description = editingStatus === 'abnormal' ? description : null;
                 currentInspectionRecord.imageBase64 = editingStatus === 'abnormal' ? editingPhotoBase64 : null;
+
+                // 更新主頁面訊息
+                const mainMessage = document.getElementById('main-message');
+                if (mainMessage) {
+                    if (editingStatus === 'normal') {
+                        mainMessage.textContent = `✅ [${currentInspectionRecord.pointName}] 巡檢完成 - 正常`;
+                        mainMessage.className = 'text-2xl text-green-400 font-bold';
+                    } else {
+                        mainMessage.textContent = `⚠️ [${currentInspectionRecord.pointName}] 已記錄異常狀況`;
+                        mainMessage.className = 'text-2xl text-yellow-400 font-bold';
+                    }
+                }
 
                 // 顯示成功訊息
                 statusMessage.textContent = '✅ 儲存成功！';

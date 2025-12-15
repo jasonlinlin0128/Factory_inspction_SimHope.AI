@@ -1,5 +1,7 @@
 const { google } = require('googleapis');
 const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+const { v4: uuidv4 } = require('uuid');
 
 // Google Sheets 設定
 const SPREADSHEET_ID = '10nPLV9odFIUcHZmupjHL_W2h6U5pglL06zBP_NM10sI';
@@ -46,6 +48,45 @@ function formatDateTime(timestamp) {
 }
 
 /**
+ * 上傳 base64 圖片到 Firebase Storage
+ * @param {string} base64Data - base64 編碼的圖片
+ * @param {string} fileName - 檔案名稱
+ * @returns {Promise<string|null>} 圖片公開 URL
+ */
+async function uploadImageToStorage(base64Data, fileName) {
+  if (!base64Data) return null;
+
+  try {
+    // 移除 data:image/...;base64, 前綴
+    const base64String = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64String, 'base64');
+
+    // 上傳到 Firebase Storage
+    const bucket = admin.storage().bucket();
+    const file = bucket.file(`inspection-photos/${fileName}`);
+
+    await file.save(buffer, {
+      metadata: {
+        contentType: 'image/jpeg',
+        metadata: {
+          firebaseStorageDownloadTokens: uuidv4(), // 生成下載 token
+        }
+      },
+      public: true // 設為公開存取
+    });
+
+    // 取得公開 URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
+    console.log('圖片已上傳:', publicUrl);
+    return publicUrl;
+
+  } catch (error) {
+    console.error('上傳圖片失敗:', error.message);
+    return null;
+  }
+}
+
+/**
  * 寫入資料到 Google Sheets
  * @param {Array<Array>} rows - 要寫入的資料列
  */
@@ -78,6 +119,13 @@ async function appendToSheet(rows) {
  * 寫入標準巡檢紀錄
  */
 async function logStandardInspection(data) {
+  // 如果有圖片，上傳到 Storage 並取得 URL
+  let imageUrl = null;
+  if (data.imageBase64) {
+    const fileName = `standard_${data.pointId}_${Date.now()}.jpg`;
+    imageUrl = await uploadImageToStorage(data.imageBase64, fileName);
+  }
+
   const row = [
     formatDateTime(data.timestamp),                 // A - 時間
     '標準巡檢',                                     // B - 類型
@@ -88,7 +136,7 @@ async function logStandardInspection(data) {
     data.deviceInfo?.model || '',                   // G - 裝置型號
     data.status === 'abnormal' ? '異常' : '正常',  // H - 巡檢狀態
     data.description || '',                         // I - 異常描述
-    data.hasImage || '否',                          // J - 照片
+    imageUrl ? `=IMAGE("${imageUrl}")` : '',        // J - 照片（IMAGE 公式）
     '',                                             // K - 處理狀態（空白）
     '',                                             // L - 處理人（空白）
     '',                                             // M - 處理說明（空白）
@@ -146,16 +194,23 @@ async function updateStandardInspection(data, originalTimestamp) {
 
     console.log(`找到對應記錄於第 ${rowIndex} 列，準備更新`);
 
+    // 如果有新圖片，上傳到 Storage
+    let imageUrl = null;
+    if (data.imageBase64) {
+      const fileName = `standard_${data.pointId}_${Date.now()}_updated.jpg`;
+      imageUrl = await uploadImageToStorage(data.imageBase64, fileName);
+    }
+
     // 更新巡檢狀態、異常描述、照片欄位（H, I, J）
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
       range: `${SHEET_NAME}!H${rowIndex}:J${rowIndex}`,
-      valueInputOption: 'RAW',
+      valueInputOption: 'USER_ENTERED',  // 改為 USER_ENTERED 以支援 IMAGE() 公式
       resource: {
         values: [[
           data.status === 'abnormal' ? '異常' : '正常',  // H - 巡檢狀態
           data.description || '',                         // I - 異常描述
-          data.hasImage || '否'                           // J - 照片
+          imageUrl ? `=IMAGE("${imageUrl}")` : ''         // J - 照片（IMAGE 公式）
         ]]
       }
     });
@@ -172,6 +227,13 @@ async function updateStandardInspection(data, originalTimestamp) {
  * 寫入乙炔區巡檢紀錄
  */
 async function logAcetyleneInspection(data) {
+  // 上傳圖片到 Storage 並取得 URL（乙炔區必有照片）
+  let imageUrl = null;
+  if (data.imageBase64) {
+    const fileName = `acetylene_${Date.now()}.jpg`;
+    imageUrl = await uploadImageToStorage(data.imageBase64, fileName);
+  }
+
   const row = [
     formatDateTime(data.timestamp),      // A - 時間
     '乙炔區巡檢',                        // B - 類型
@@ -182,7 +244,7 @@ async function logAcetyleneInspection(data) {
     data.deviceInfo?.model || '',        // G - 裝置型號
     '',                                  // H - 巡檢狀態（空白）
     '',                                  // I - 異常描述（空白）
-    '是',                                // J - 照片（乙炔區必有照片）
+    imageUrl ? `=IMAGE("${imageUrl}")` : '是',  // J - 照片（IMAGE 公式，若上傳失敗則顯示「是」）
     '',                                  // K - 處理狀態（空白）
     '',                                  // L - 處理人（空白）
     '',                                  // M - 處理說明（空白）
@@ -195,6 +257,13 @@ async function logAcetyleneInspection(data) {
  * 寫入異常回報
  */
 async function logAbnormalReport(data) {
+  // 如果有圖片，上傳到 Storage 並取得 URL
+  let imageUrl = null;
+  if (data.imageBase64) {
+    const fileName = `abnormal_${data.pointId}_${Date.now()}.jpg`;
+    imageUrl = await uploadImageToStorage(data.imageBase64, fileName);
+  }
+
   const row = [
     formatDateTime(data.timestamp),      // A - 時間
     '異常回報',                          // B - 類型
@@ -205,7 +274,7 @@ async function logAbnormalReport(data) {
     data.deviceInfo?.model || '',        // G - 裝置型號
     '',                                  // H - 巡檢狀態（空白）
     data.description || '',              // I - 異常描述
-    data.imageBase64 ? '是' : '否',      // J - 照片
+    imageUrl ? `=IMAGE("${imageUrl}")` : '',  // J - 照片（IMAGE 公式）
     '待處理',                            // K - 處理狀態
     '',                                  // L - 處理人（空白）
     '',                                  // M - 處理說明（空白）

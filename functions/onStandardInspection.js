@@ -37,7 +37,7 @@ exports.onStandardInspectionCreated = functions
         deviceInfo: data.deviceInfo || {},
         status: data.status || 'normal',
         description: data.description || '',
-        hasImage: data.imageBase64 ? '是' : '否'
+        imageBase64: data.imageBase64 || null  // 傳遞實際圖片數據
       };
 
       // 同步到 Google Sheets
@@ -100,7 +100,7 @@ exports.onStandardInspectionUpdated = functions
         deviceInfo: after.deviceInfo || {},
         status: after.status || 'normal',
         description: after.description || '',
-        hasImage: after.imageBase64 ? '是' : '否'
+        imageBase64: after.imageBase64 || null  // 傳遞實際圖片數據
       };
 
       // 更新 Google Sheets
