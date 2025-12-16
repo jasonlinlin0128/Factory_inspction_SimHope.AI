@@ -277,8 +277,20 @@
         async function handleStandardInspection() {
             const pointRef = doc(db, 'inspectionPoints', pointId);
             const deviceInfo = getDeviceInfo();
+
+            // 定義巡檢點中文名稱對照表
+            const pointsMap = {
+                'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
+                'crane-4': '天車-4', 'crane-5': '天車-5',
+                'acetylene': '乙炔區',
+                'hook-safety': '吊鉤安全高度',
+                'emergency-stop': '急停開關',
+                'factory-lights': '工廠電燈'
+            };
+            const displayName = pointsMap[pointId] || pointId;
+
             try {
-                mainMessage.textContent = `正在更新 [${pointId}]...`;
+                mainMessage.textContent = `正在更新 [${displayName}]...`;
 
                 // 更新巡檢點狀態
                 await updateDoc(pointRef, {
@@ -289,7 +301,7 @@
                 });
 
                 // 顯示狀態選擇按鈕
-                mainMessage.textContent = `[${pointId}] 巡檢點已確認`;
+                mainMessage.textContent = `[${displayName}] 巡檢點已確認`;
                 mainMessage.parentElement.querySelector('.loader').style.display = 'none';
                 mainMessage.className = 'text-xl text-gray-300';
                 document.getElementById('status-selection').classList.remove('hidden');

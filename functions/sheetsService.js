@@ -101,7 +101,7 @@ async function appendToSheet(rows) {
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: `${SHEET_NAME}!A:Z`,
-      valueInputOption: 'RAW',
+      valueInputOption: 'USER_ENTERED',  // 改為 USER_ENTERED 以支援 IMAGE() 公式
       resource: {
         values: rows
       }
