@@ -136,7 +136,7 @@ async function logStandardInspection(data) {
     data.deviceInfo?.model || '',                   // G - 裝置型號
     data.status === 'abnormal' ? '異常' : '正常',  // H - 巡檢狀態
     data.description || '',                         // I - 異常描述
-    imageUrl ? `=IMAGE("${imageUrl}")` : '',        // J - 照片（IMAGE 公式）
+    imageUrl ? `=IMAGE("${imageUrl}",4,150,200)` : '',  // J - 照片（IMAGE 公式，150px高 200px寬）
     '',                                             // K - 處理狀態（空白）
     '',                                             // L - 處理人（空白）
     '',                                             // M - 處理說明（空白）
@@ -210,7 +210,7 @@ async function updateStandardInspection(data, originalTimestamp) {
         values: [[
           data.status === 'abnormal' ? '異常' : '正常',  // H - 巡檢狀態
           data.description || '',                         // I - 異常描述
-          imageUrl ? `=IMAGE("${imageUrl}")` : ''         // J - 照片（IMAGE 公式）
+          imageUrl ? `=IMAGE("${imageUrl}",4,150,200)` : ''  // J - 照片（IMAGE 公式，150px高 200px寬）
         ]]
       }
     });
@@ -244,7 +244,7 @@ async function logAcetyleneInspection(data) {
     data.deviceInfo?.model || '',        // G - 裝置型號
     '',                                  // H - 巡檢狀態（空白）
     '',                                  // I - 異常描述（空白）
-    imageUrl ? `=IMAGE("${imageUrl}")` : '是',  // J - 照片（IMAGE 公式，若上傳失敗則顯示「是」）
+    imageUrl ? `=IMAGE("${imageUrl}",4,150,200)` : '是',  // J - 照片（IMAGE 公式，150px高 200px寬，若上傳失敗則顯示「是」）
     '',                                  // K - 處理狀態（空白）
     '',                                  // L - 處理人（空白）
     '',                                  // M - 處理說明（空白）
@@ -274,7 +274,7 @@ async function logAbnormalReport(data) {
     data.deviceInfo?.model || '',        // G - 裝置型號
     '',                                  // H - 巡檢狀態（空白）
     data.description || '',              // I - 異常描述
-    imageUrl ? `=IMAGE("${imageUrl}")` : '',  // J - 照片（IMAGE 公式）
+    imageUrl ? `=IMAGE("${imageUrl}",4,150,200)` : '',  // J - 照片（IMAGE 公式，150px高 200px寬）
     '待處理',                            // K - 處理狀態
     '',                                  // L - 處理人（空白）
     '',                                  // M - 處理說明（空白）
