@@ -154,11 +154,25 @@
                                   <p class="text-xs">瀏覽器: <span class="font-medium text-slate-700">${browserDetail}</span></p>`;
                 }
 
-                const isInspected = status === 'inspected';
-                const statusBgColor = isInspected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-                const statusText = isInspected ? '已巡檢' : '待巡檢';
-                let borderColor = isInspected ? 'border-green-500' : 'border-red-500';
-                if(hasAbnormalReport) borderColor = 'border-yellow-500 ring-4 ring-yellow-300'; // **新增**：有異常時顯示黃色外框
+                // 根據異常報告和巡檢狀態決定顯示樣式
+                let statusBgColor, statusText, borderColor;
+
+                if (hasAbnormalReport) {
+                    // 有未處理異常：紅色標籤、黃色邊框
+                    statusBgColor = 'bg-red-100 text-red-800';
+                    statusText = '異常';
+                    borderColor = 'border-yellow-500 ring-4 ring-yellow-300';
+                } else if (status === 'inspected') {
+                    // 已巡檢且無異常：綠色
+                    statusBgColor = 'bg-green-100 text-green-800';
+                    statusText = '已巡檢';
+                    borderColor = 'border-green-500';
+                } else {
+                    // 待巡檢：灰色
+                    statusBgColor = 'bg-gray-100 text-gray-800';
+                    statusText = '待巡檢';
+                    borderColor = 'border-red-500';
+                }
 
                 const detailsButtonHTML = `<button data-id="${point.id}" data-name="${point.name}" class="view-details-button mt-4 w-full bg-slate-700 hover:bg-slate-800 text-white text-sm py-2 px-3 rounded-md">查看紀錄</button>`;
 

@@ -220,7 +220,7 @@
                     imageBase64: imageBase64
                 });
 
-                // 儲存本次巡檢記錄到全域變數
+                // 定義巡檢點名稱對照表
                 const pointsMap = {
                     'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
                     'crane-4': '天車-4', 'crane-5': '天車-5',
@@ -229,6 +229,27 @@
                     'emergency-stop': '急停開關',
                     'factory-lights': '工廠電燈'
                 };
+
+                // 如果是異常，同時寫入 abnormal_reports
+                if (status === 'abnormal') {
+                    await addDoc(collection(db, 'abnormal_reports'), {
+                        pointId: pointId,
+                        pointName: pointsMap[pointId] || pointId,
+                        inspectorName: inspectorName,
+                        description: description,
+                        imageBase64: imageBase64,
+                        timestamp: serverTimestamp(),
+                        status: 'reported',           // 待處理狀態
+                        resolvedBy: null,
+                        resolvedAt: null,
+                        resolution: null,
+                        notificationSent: false,
+                        resolutionNotificationSent: false,
+                        deviceInfo: deviceInfo
+                    });
+                }
+
+                // 儲存本次巡檢記錄到全域變數
 
                 currentInspectionRecord = {
                     docId: docRef.id,           // 新增：儲存 document ID
