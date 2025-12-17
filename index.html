@@ -268,8 +268,7 @@
             modalBody.innerHTML = '<p class="text-slate-500 text-center">正在載入紀錄...</p>';
             const logCollectionName = pointId === 'acetylene' ? 'acetylene_log' : 'standard_inspection_log';
             const logCollectionRef = collection(db, logCollectionName);
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const sevenDaysAgo = Timestamp.fromDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
             let q = pointId === 'acetylene'
                 ? query(logCollectionRef, where("timestamp", ">=", sevenDaysAgo))
                 : query(logCollectionRef, where("pointId", "==", pointId), where("timestamp", ">=", sevenDaysAgo));

@@ -126,9 +126,27 @@ exports.onAbnormalReportResolved = functions
           resolution: after.resolution
         });
 
-        // 只標記處理完成通知已發送（實際不發 LINE 通知）
+        // 發送 LINE 通知給主管
+        const resolvedMessage = `
+✅ 異常已處理完畢
+
+巡檢點：${after.pointName}
+原回報人：${after.inspectorName}
+處理人：${after.resolvedBy}
+處理時間：${after.resolvedAt.toDate().toLocaleString('zh-TW', { hour12: false })}
+
+原異常描述：
+${after.description}
+
+處理說明：
+${after.resolution}
+        `.trim();
+
+        await sendLineNotify(LINE_TOKEN, resolvedMessage);
+
+        // 標記處理完成通知已發送
         await change.after.ref.update({ resolutionNotificationSent: true });
-        console.log('異常處理狀態已更新');
+        console.log('異常處理狀態已更新，LINE 通知已發送');
       } catch (error) {
         console.error('更新狀態失敗:', error);
       }
