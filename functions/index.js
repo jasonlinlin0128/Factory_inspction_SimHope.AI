@@ -5,34 +5,51 @@ const sheetsService = require('./sheetsService');
 
 admin.initializeApp();
 
-// 直接寫入 LINE Token（私有專案適用）
-const LINE_TOKEN = 'c+EUNkjk5UErAmmB9wysCtztPsxWjmc5/LeJIwAhuTVlhP2Q6zamu991UlncDfPkY/nECvKl4x8oV3EzXQ9bIfmCLbqSK7y8MV4UiacHeDfE1RPiPK4ONIwcXa/NGI/3fkvbXEXFh7k59BjWZnTybgdB04t89/1O/w1cDnyilFU=';
+// LINE Messaging API 設定
+const LINE_CONFIG = {
+  channelAccessToken: 'c+EUNkjk5UErAmmB9wysCtztPsxWjmc5/LeJIwAhuTVlhP2Q6zamu991UlncDfPkY/nECvKl4x8oV3EzXQ9bIfmCLbqSK7y8MV4UiacHeDfE1RPiPK4ONIwcXa/NGI/3fkvbXEXFh7k59BjWZnTybgdB04t89/1O/w1cDnyilFU=',
+  channelSecret: '7db2050b2242cc400cef0825b2673720',
+  channelId: '2007534866',
+  // 主管 User ID
+  supervisorUserId: 'U460381680455ba3b30bcb01972fe0ffb'
+};
 
 /**
- * 發送 LINE Notify 通知
- * @param {string} token - LINE Notify Access Token
+ * 發送 LINE Messaging API 推播訊息
+ * @param {string} userId - LINE User ID
  * @param {string} message - 要發送的訊息
  */
-async function sendLineNotify(token, message) {
+async function sendLineMessage(userId, message) {
   try {
-    console.log('準備發送 LINE 通知...');
-    const response = await axios.post('https://notify-api.line.me/api/notify',
-      `message=${encodeURIComponent(message)}`,
+    console.log('準備發送 LINE 訊息給:', userId);
+
+    const response = await axios.post(
+      'https://api.line.me/v2/bot/message/push',
+      {
+        to: userId,
+        messages: [
+          {
+            type: 'text',
+            text: message
+          }
+        ]
+      },
       {
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${LINE_CONFIG.channelAccessToken}`
         },
         timeout: 10000
       }
     );
-    console.log('LINE 通知發送成功，狀態碼:', response.status);
+
+    console.log('LINE 訊息發送成功，狀態碼:', response.status);
     return true;
   } catch (error) {
-    console.error('LINE 通知發送失敗:', error.message);
+    console.error('LINE 訊息發送失敗:', error.message);
     if (error.response) {
       console.error('HTTP 狀態碼:', error.response.status);
-      console.error('回應內容:', error.response.data);
+      console.error('回應內容:', JSON.stringify(error.response.data));
     }
     // 不拋出錯誤，讓 Function 繼續執行 Sheets 同步
     return false;
@@ -66,7 +83,7 @@ ${report.description}
 
     try {
       // 發送 LINE 通知
-      await sendLineNotify(LINE_TOKEN, message);
+      await sendLineMessage(LINE_CONFIG.supervisorUserId, message);
 
       // 同步到 Google Sheets
       await sheetsService.logAbnormalReport({
@@ -142,7 +159,7 @@ ${after.description}
 ${after.resolution}
         `.trim();
 
-        await sendLineNotify(LINE_TOKEN, resolvedMessage);
+        await sendLineMessage(LINE_CONFIG.supervisorUserId, resolvedMessage);
 
         // 標記處理完成通知已發送
         await change.after.ref.update({ resolutionNotificationSent: true });
@@ -151,6 +168,78 @@ ${after.resolution}
         console.error('更新狀態失敗:', error);
       }
     }
+  });
+
+/**
+ * LINE Bot Webhook - 用於接收訊息並取得 User ID
+ * Webhook URL: https://asia-east1-factory-inspection-system.cloudfunctions.net/lineWebhook
+ */
+exports.lineWebhook = functions
+  .region('asia-east1')
+  .https
+  .onRequest(async (req, res) => {
+    console.log('收到 LINE Webhook 請求');
+    console.log('Request body:', JSON.stringify(req.body));
+
+    // 只處理 POST 請求
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method Not Allowed');
+    }
+
+    const events = req.body.events;
+
+    if (!events || events.length === 0) {
+      console.log('沒有事件');
+      return res.status(200).send('OK');
+    }
+
+    // 處理每個事件
+    for (const event of events) {
+      console.log('事件類型:', event.type);
+
+      if (event.type === 'message' && event.message.type === 'text') {
+        const userId = event.source.userId;
+        const userName = event.source.type === 'user' ? '個人用戶' : event.source.type;
+        const messageText = event.message.text;
+
+        console.log('='.repeat(50));
+        console.log('📱 收到 LINE 訊息');
+        console.log('User ID:', userId);
+        console.log('用戶類型:', userName);
+        console.log('訊息內容:', messageText);
+        console.log('='.repeat(50));
+        console.log('');
+        console.log('⚠️ 請將此 User ID 複製並更新到 LINE_CONFIG.supervisorUserId');
+        console.log('');
+
+        // 回覆訊息
+        try {
+          await axios.post(
+            'https://api.line.me/v2/bot/message/reply',
+            {
+              replyToken: event.replyToken,
+              messages: [
+                {
+                  type: 'text',
+                  text: `✅ 已記錄您的 User ID\n\n您的 User ID 是：\n${userId}\n\n請將此 ID 提供給系統管理員。`
+                }
+              ]
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${LINE_CONFIG.channelAccessToken}`
+              }
+            }
+          );
+          console.log('已回覆訊息給用戶');
+        } catch (error) {
+          console.error('回覆訊息失敗:', error.message);
+        }
+      }
+    }
+
+    return res.status(200).send('OK');
   });
 
 // 匯入定時重置功能
