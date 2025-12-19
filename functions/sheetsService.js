@@ -468,5 +468,6 @@ module.exports = {
   logAbnormalReport,
   updateAbnormalResolution,
   logDailyReset,
-  initializeSheetHeaders
+  initializeSheetHeaders,
+  uploadImageToStorage  // 新增：導出照片上傳函數供其他模組使用
 };

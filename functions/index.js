@@ -18,16 +18,29 @@ const LINE_CONFIG = {
 };
 
 /**
- * 發送 LINE Messaging API 推播訊息（支援多接收者）
+ * 發送 LINE Messaging API 推播訊息（支援多接收者和多訊息）
  * @param {string|string[]} userIds - LINE User ID 或 User ID 陣列
- * @param {string} message - 要發送的訊息
+ * @param {string|object|array} messages - 訊息內容（字串、單個訊息物件或訊息陣列）
  * @returns {Promise<boolean>} 至少一個接收者發送成功返回 true
  */
-async function sendLineMessage(userIds, message) {
+async function sendLineMessage(userIds, messages) {
   // 統一轉換為陣列（支援向後相容）
   const recipients = Array.isArray(userIds) ? userIds : [userIds];
 
-  console.log(`準備發送 LINE 訊息給 ${recipients.length} 位接收者`);
+  // 統一處理訊息格式
+  let messageArray;
+  if (typeof messages === 'string') {
+    // 字串：轉換為文字訊息
+    messageArray = [{ type: 'text', text: messages }];
+  } else if (Array.isArray(messages)) {
+    // 已經是陣列：直接使用
+    messageArray = messages;
+  } else {
+    // 單個訊息物件：轉換為陣列
+    messageArray = [messages];
+  }
+
+  console.log(`準備發送 ${messageArray.length} 則 LINE 訊息給 ${recipients.length} 位接收者`);
 
   const results = {
     success: 0,
@@ -44,12 +57,7 @@ async function sendLineMessage(userIds, message) {
         'https://api.line.me/v2/bot/message/push',
         {
           to: userId,
-          messages: [
-            {
-              type: 'text',
-              text: message
-            }
-          ]
+          messages: messageArray  // 使用處理後的訊息陣列
         },
         {
           headers: {
@@ -89,7 +97,7 @@ async function sendLineMessage(userIds, message) {
 }
 
 /**
- * Trigger 1: 新異常回報時自動發送通知給主管
+ * Trigger 1: 新異常回報時自動發送通知給主管（支援照片）
  * 當 abnormal_reports collection 新增文件時觸發
  */
 exports.onAbnormalReportCreated = functions
@@ -101,11 +109,21 @@ exports.onAbnormalReportCreated = functions
 
     console.log('偵測到新異常回報:', context.params.reportId);
 
-    const message = `
+    // 建立文字訊息（包含時區修正）
+    const textMessage = `
 ⚠️ 新異常回報
 巡檢點：${report.pointName}
 回報人：${report.inspectorName}
-時間：${report.timestamp.toDate().toLocaleString('zh-TW', { hour12: false })}
+時間：${report.timestamp.toDate().toLocaleString('zh-TW', {
+  timeZone: 'Asia/Taipei',
+  hour12: false,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit'
+})}
 
 異常描述：
 ${report.description}
@@ -114,8 +132,38 @@ ${report.description}
     `.trim();
 
     try {
+      // 準備要發送的訊息陣列
+      const messagesToSend = [
+        {
+          type: 'text',
+          text: textMessage
+        }
+      ];
+
+      // 如果有照片，上傳並加入圖片訊息
+      let imageUrl = null;
+      if (report.imageBase64) {
+        console.log('偵測到異常回報包含照片，準備上傳...');
+
+        const fileName = `abnormal_${report.pointId}_${context.params.reportId}_${Date.now()}.jpg`;
+        imageUrl = await sheetsService.uploadImageToStorage(report.imageBase64, fileName);
+
+        if (imageUrl) {
+          console.log('照片上傳成功，URL:', imageUrl);
+
+          // 加入圖片訊息
+          messagesToSend.push({
+            type: 'image',
+            originalContentUrl: imageUrl,
+            previewImageUrl: imageUrl  // 使用相同的 URL 作為預覽圖
+          });
+        } else {
+          console.warn('照片上傳失敗，將僅發送文字訊息');
+        }
+      }
+
       // 發送 LINE 通知給所有接收者（主管和老闆）
-      await sendLineMessage(LINE_CONFIG.recipientUserIds, message);
+      await sendLineMessage(LINE_CONFIG.recipientUserIds, messagesToSend);
 
       // 同步到 Google Sheets
       await sheetsService.logAbnormalReport({
@@ -124,11 +172,18 @@ ${report.description}
         pointName: report.pointName,
         inspectorName: report.inspectorName,
         deviceInfo: report.deviceInfo || {},
-        description: report.description
+        description: report.description,
+        imageBase64: report.imageBase64  // sheetsService 會自行處理照片上傳
       });
 
-      // 更新文件，標記通知已發送
-      await snapshot.ref.update({ notificationSent: true });
+      // 更新文件，標記通知已發送，並儲存圖片 URL（如果有）
+      const updateData = {
+        notificationSent: true
+      };
+      if (imageUrl) {
+        updateData.imageUrl = imageUrl;
+      }
+      await snapshot.ref.update(updateData);
 
       console.log('異常回報通知處理完成');
     } catch (error) {
@@ -182,7 +237,16 @@ exports.onAbnormalReportResolved = functions
 巡檢點：${after.pointName}
 原回報人：${after.inspectorName}
 處理人：${after.resolvedBy}
-處理時間：${after.resolvedAt.toDate().toLocaleString('zh-TW', { hour12: false })}
+處理時間：${after.resolvedAt.toDate().toLocaleString('zh-TW', {
+  timeZone: 'Asia/Taipei',
+  hour12: false,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit'
+})}
 
 原異常描述：
 ${after.description}
@@ -286,3 +350,7 @@ exports.onStandardInspectionUpdated = onStandardInspection.onStandardInspectionU
 
 const onAcetyleneInspection = require('./onAcetyleneInspection');
 exports.onAcetyleneInspectionCreated = onAcetyleneInspection.onAcetyleneInspectionCreated;
+
+// 匯入巡檢完成檢測功能
+const onInspectionComplete = require('./onInspectionComplete');
+exports.onInspectionPointUpdated = onInspectionComplete.onInspectionPointUpdated;
