@@ -10,50 +10,82 @@ const LINE_CONFIG = {
   channelAccessToken: 'c+EUNkjk5UErAmmB9wysCtztPsxWjmc5/LeJIwAhuTVlhP2Q6zamu991UlncDfPkY/nECvKl4x8oV3EzXQ9bIfmCLbqSK7y8MV4UiacHeDfE1RPiPK4ONIwcXa/NGI/3fkvbXEXFh7k59BjWZnTybgdB04t89/1O/w1cDnyilFU=',
   channelSecret: '7db2050b2242cc400cef0825b2673720',
   channelId: '2007534866',
-  // 主管 User ID
-  supervisorUserId: 'U460381680455ba3b30bcb01972fe0ffb'
+  // 多個接收者的 User ID 陣列
+  recipientUserIds: [
+    'U460381680455ba3b30bcb01972fe0ffb',  // 主管
+    'U30b5ef382e4ee80a91e6600b6f592e85'   // 老闆
+  ]
 };
 
 /**
- * 發送 LINE Messaging API 推播訊息
- * @param {string} userId - LINE User ID
+ * 發送 LINE Messaging API 推播訊息（支援多接收者）
+ * @param {string|string[]} userIds - LINE User ID 或 User ID 陣列
  * @param {string} message - 要發送的訊息
+ * @returns {Promise<boolean>} 至少一個接收者發送成功返回 true
  */
-async function sendLineMessage(userId, message) {
-  try {
-    console.log('準備發送 LINE 訊息給:', userId);
+async function sendLineMessage(userIds, message) {
+  // 統一轉換為陣列（支援向後相容）
+  const recipients = Array.isArray(userIds) ? userIds : [userIds];
 
-    const response = await axios.post(
-      'https://api.line.me/v2/bot/message/push',
-      {
-        to: userId,
-        messages: [
-          {
-            type: 'text',
-            text: message
-          }
-        ]
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${LINE_CONFIG.channelAccessToken}`
+  console.log(`準備發送 LINE 訊息給 ${recipients.length} 位接收者`);
+
+  const results = {
+    success: 0,
+    failed: 0,
+    details: []
+  };
+
+  // 並行發送給所有接收者
+  const promises = recipients.map(async (userId) => {
+    try {
+      console.log('發送訊息給:', userId);
+
+      const response = await axios.post(
+        'https://api.line.me/v2/bot/message/push',
+        {
+          to: userId,
+          messages: [
+            {
+              type: 'text',
+              text: message
+            }
+          ]
         },
-        timeout: 10000
-      }
-    );
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${LINE_CONFIG.channelAccessToken}`
+          },
+          timeout: 10000
+        }
+      );
 
-    console.log('LINE 訊息發送成功，狀態碼:', response.status);
-    return true;
-  } catch (error) {
-    console.error('LINE 訊息發送失敗:', error.message);
-    if (error.response) {
-      console.error('HTTP 狀態碼:', error.response.status);
-      console.error('回應內容:', JSON.stringify(error.response.data));
+      console.log(`✓ 發送成功 (${userId}), 狀態碼: ${response.status}`);
+      results.success++;
+      results.details.push({ userId, success: true });
+
+    } catch (error) {
+      console.error(`✗ 發送失敗 (${userId}):`, error.message);
+      if (error.response) {
+        console.error('HTTP 狀態碼:', error.response.status);
+        console.error('回應內容:', JSON.stringify(error.response.data));
+      }
+      results.failed++;
+      results.details.push({
+        userId,
+        success: false,
+        error: error.message
+      });
     }
-    // 不拋出錯誤，讓 Function 繼續執行 Sheets 同步
-    return false;
-  }
+  });
+
+  // 等待所有發送完成
+  await Promise.allSettled(promises);
+
+  console.log(`LINE 訊息發送完成: 成功 ${results.success}, 失敗 ${results.failed}`);
+
+  // 至少有一個成功就返回 true
+  return results.success > 0;
 }
 
 /**
@@ -82,8 +114,8 @@ ${report.description}
     `.trim();
 
     try {
-      // 發送 LINE 通知
-      await sendLineMessage(LINE_CONFIG.supervisorUserId, message);
+      // 發送 LINE 通知給所有接收者（主管和老闆）
+      await sendLineMessage(LINE_CONFIG.recipientUserIds, message);
 
       // 同步到 Google Sheets
       await sheetsService.logAbnormalReport({
@@ -159,7 +191,8 @@ ${after.description}
 ${after.resolution}
         `.trim();
 
-        await sendLineMessage(LINE_CONFIG.supervisorUserId, resolvedMessage);
+        // 發送處理完畢通知給所有接收者（主管和老闆）
+        await sendLineMessage(LINE_CONFIG.recipientUserIds, resolvedMessage);
 
         // 標記處理完成通知已發送
         await change.after.ref.update({ resolutionNotificationSent: true });
