@@ -85,7 +85,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs, updateDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
@@ -101,7 +101,9 @@
         const db = getFirestore(app);
 
         const inspectionPoints = [
-            { id: 'crane-1', name: '天車-1' }, { id: 'crane-2', name: '天車-2' }, { id: 'crane-3', name: '天車-3' }, { id: 'crane-4', name: '天車-4' }, { id: 'crane-5', name: '天車-5' }, { id: 'hook-safety', name: '吊鉤安全高度' }, { id: 'emergency-stop', name: '急停開關' }, { id: 'acetylene', name: '乙炔存放區' }, { id: 'factory-lights', name: '工廠電燈' }
+            { id: 'building-a', name: 'A棟' },
+            { id: 'building-b', name: 'B棟' },
+            { id: 'outdoor-area', name: '外廠區' }
         ];
 
         const grid = document.getElementById('dashboard-grid');
@@ -207,11 +209,13 @@
             reports.forEach(report => {
                 const formattedTime = report.timestamp.toDate().toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' });
                 const imageHTML = report.imageBase64 ? `<img src="${report.imageBase64}" class="w-full h-auto rounded-md mt-2 border">` : '';
+                const itemNameHTML = report.itemName ? `<p class="text-sm text-red-600 font-medium mt-1">${report.itemName}</p>` : '';
 
                 const reportCard = `
                     <div class="bg-white rounded-lg border-l-4 border-red-500 shadow-md p-4">
                         <div class="mb-2">
                             <h3 class="font-bold text-lg text-red-700">${report.pointName}</h3>
+                            ${itemNameHTML}
                             <p class="text-sm text-slate-500">${formattedTime}</p>
                         </div>
                         <p class="text-slate-800 bg-slate-100 p-2 rounded-md">${report.description}</p>
@@ -262,16 +266,13 @@
                 alert('重置失敗，請檢查控制台錯誤訊息。');
             }
          }
-        async function openHistoryModal(pointId, pointName) { 
+        async function openHistoryModal(pointId, pointName) {
             modalTitle.textContent = `${pointName} - 7 日巡檢紀錄`;
             historyModal.classList.remove('hidden');
             modalBody.innerHTML = '<p class="text-slate-500 text-center">正在載入紀錄...</p>';
-            const logCollectionName = pointId === 'acetylene' ? 'acetylene_log' : 'standard_inspection_log';
-            const logCollectionRef = collection(db, logCollectionName);
+            const logCollectionRef = collection(db, 'standard_inspection_log');
             const sevenDaysAgo = Timestamp.fromDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-            let q = pointId === 'acetylene'
-                ? query(logCollectionRef, where("timestamp", ">=", sevenDaysAgo))
-                : query(logCollectionRef, where("pointId", "==", pointId), where("timestamp", ">=", sevenDaysAgo));
+            let q = query(logCollectionRef, where("pointId", "==", pointId), where("timestamp", ">=", sevenDaysAgo));
             try {
                 const querySnapshot = await getDocs(q);
                 let logs = querySnapshot.docs.map(doc => doc.data()).filter(log => log.timestamp);
@@ -434,13 +435,9 @@
                 const standardSnapshot = await getDocs(standardQuery);
 
                 const pointsMap = {
-                    'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
-                    'crane-4': '天車-4', 'crane-5': '天車-5',
-                    'acetylene': '乙炔區',
-                    'air-compressor': '空壓機',
-                    'hook-safety': '吊鉤安全高度',
-                    'emergency-stop': '急停開關',
-                    'factory-lights': '工廠電燈'
+                    'building-a': 'A棟',
+                    'building-b': 'B棟',
+                    'outdoor-area': '外廠區'
                 };
 
                 standardSnapshot.docs.forEach(doc => {

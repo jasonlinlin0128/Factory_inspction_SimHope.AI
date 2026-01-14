@@ -7,7 +7,7 @@ admin.initializeApp();
 
 // LINE Messaging API 設定
 const LINE_CONFIG = {
-  channelAccessToken: 'c+EUNkjk5UErAmmB9wysCtztPsxWjmc5/LeJIwAhuTVlhP2Q6zamu991UlncDfPkY/nECvKl4x8oV3EzXQ9bIfmCLbqSK7y8MV4UiacHeDfE1RPiPK4ONIwcXa/NGI/3fkvbXEXFh7k59BjWZnTybgdB04t89/1O/w1cDnyilFU=',
+  channelAccessToken: 'CGP/yRRpZzlFOpCqrYN3pMGP/AdfYj6Xaz1knjxJr5wWwzWRVwF8pkndiSChHYJG27cmk6sqkNp/L7QFIuevOJIlmTkqA1SuCKAK3oXTOk4ZUUFy0TdcAHXbYyICzs7s4dBOOXXRgmoTgUcKLbotZgdB04t89/1O/w1cDnyilFU=',
   channelSecret: '7db2050b2242cc400cef0825b2673720',
   channelId: '2007534866',
   // 多個接收者的 User ID 陣列
@@ -110,9 +110,10 @@ exports.onAbnormalReportCreated = functions
     console.log('偵測到新異常回報:', context.params.reportId);
 
     // 建立文字訊息（包含時區修正）
+    const itemInfo = report.itemName ? `\n異常項目：${report.itemName}` : '';
     const textMessage = `
 ⚠️ 新異常回報
-巡檢點：${report.pointName}
+巡檢點：${report.pointName}${itemInfo}
 回報人：${report.inspectorName}
 時間：${report.timestamp.toDate().toLocaleString('zh-TW', {
   timeZone: 'Asia/Taipei',
@@ -231,10 +232,11 @@ exports.onAbnormalReportResolved = functions
         });
 
         // 發送 LINE 通知給主管
+        const itemInfo = after.itemName ? `\n異常項目：${after.itemName}` : '';
         const resolvedMessage = `
 ✅ 異常已處理完畢
 
-巡檢點：${after.pointName}
+巡檢點：${after.pointName}${itemInfo}
 原回報人：${after.inspectorName}
 處理人：${after.resolvedBy}
 處理時間：${after.resolvedAt.toDate().toLocaleString('zh-TW', {

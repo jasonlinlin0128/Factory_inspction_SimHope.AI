@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 允許已登入用戶（包含匿名登入）讀寫巡檢相關資料
+    match /inspectionPoints/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /standard_inspection_log/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /acetylene_log/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /abnormal_reports/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

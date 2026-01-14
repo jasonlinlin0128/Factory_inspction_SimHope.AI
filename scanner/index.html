@@ -8,14 +8,14 @@
     <style>
         html, body { height: 100%; -webkit-tap-highlight-color: transparent; }
         .loader {
-            width: 80px; height: 80px; border-radius: 50%; position: relative; animation: rotate 1s linear infinite;
+            width: 60px; height: 60px; border-radius: 50%; position: relative; animation: rotate 1s linear infinite;
         }
         .loader::before, .loader::after {
             content: ""; box-sizing: border-box; position: absolute; inset: 0px; border-radius: 50%;
-            border: 5px solid #FFF; animation: prixClipFix 2s linear infinite;
+            border: 4px solid #FFF; animation: prixClipFix 2s linear infinite;
         }
         .loader::after {
-            border-color: #3b82f6; animation: prixClipFix 2s linear infinite, rotate 0.5s linear infinite reverse; inset: 6px;
+            border-color: #3b82f6; animation: prixClipFix 2s linear infinite, rotate 0.5s linear infinite reverse; inset: 5px;
         }
         @keyframes rotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes prixClipFix {
@@ -25,67 +25,92 @@
             75% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 100%); }
             100% { clip-path: polygon(50% 50%, 0 0, 100% 0, 100% 100%, 0 100%, 0 0); }
         }
+        .item-card { transition: all 0.3s ease; }
+        .item-card.normal { border-left: 4px solid #22c55e; background: #f0fdf4; }
+        .item-card.abnormal { border-left: 4px solid #ef4444; background: #fef2f2; }
+        .item-card.pending { border-left: 4px solid #9ca3af; background: #f9fafb; }
     </style>
 </head>
-<body class="bg-black text-white flex flex-col items-center justify-center h-full font-sans p-4">
+<body class="bg-slate-900 text-white font-sans">
 
-    <div id="message-container" class="text-center flex flex-col items-center space-y-6 w-full max-w-md">
+    <!-- 載入畫面 -->
+    <div id="loading-screen" class="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center z-50">
         <div class="loader"></div>
-        <p id="main-message" class="text-xl text-gray-300">正在處理巡檢點...</p>
+        <p id="loading-message" class="mt-6 text-lg text-gray-300">正在載入巡檢項目...</p>
+    </div>
 
-        <!-- 狀態選擇區塊 (巡檢完成後顯示) -->
-        <div id="status-selection" class="hidden w-full bg-gray-900 p-6 rounded-lg border border-gray-700">
-            <p class="text-center text-lg font-semibold mb-4">請標記此次巡檢狀態：</p>
-            <div class="flex gap-4">
-                <button id="normal-button" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-lg text-lg transition-colors shadow-lg">
-                    ✅ 正常
-                </button>
-                <button id="abnormal-button" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 rounded-lg text-lg transition-colors shadow-lg">
-                    ❌ 異常
-                </button>
+    <!-- 主要內容 -->
+    <div id="main-content" class="hidden min-h-screen p-4 pb-32">
+        <header class="text-center mb-6">
+            <h1 id="point-name" class="text-2xl font-bold text-white">巡檢區域</h1>
+            <p id="inspector-info" class="text-sm text-gray-400 mt-1">巡檢員：---</p>
+        </header>
+
+        <div id="checklist-container" class="space-y-3">
+            <!-- 子項目清單將動態生成 -->
+        </div>
+
+        <!-- 進度指示器 -->
+        <div class="fixed bottom-20 left-0 right-0 px-4">
+            <div class="bg-slate-800 rounded-lg p-3 shadow-lg">
+                <div class="flex justify-between text-sm mb-2">
+                    <span class="text-gray-400">巡檢進度</span>
+                    <span id="progress-text" class="text-white font-medium">0 / 0</span>
+                </div>
+                <div class="w-full bg-slate-700 rounded-full h-2">
+                    <div id="progress-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
             </div>
         </div>
 
-        <!-- 異常詳情表單 (選擇異常後顯示) -->
-        <div id="abnormal-details" class="hidden w-full bg-gray-900 p-6 rounded-lg border border-red-700">
-            <h3 class="text-lg font-bold text-red-400 mb-4">異常巡檢詳情</h3>
-            <div class="space-y-4">
+        <!-- 提交按鈕 -->
+        <div class="fixed bottom-0 left-0 right-0 p-4 bg-slate-900">
+            <button id="submit-button" disabled class="w-full bg-gray-600 text-white font-bold py-4 rounded-lg text-lg transition-colors disabled:opacity-50">
+                請完成所有項目確認
+            </button>
+        </div>
+    </div>
+
+    <!-- 異常詳情 Modal -->
+    <div id="abnormal-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-slate-800 rounded-lg w-full max-w-md max-h-[80vh] overflow-y-auto">
+            <header class="sticky top-0 bg-slate-800 p-4 border-b border-slate-700">
+                <h2 id="modal-item-title" class="text-lg font-bold text-red-400">異常說明</h2>
+            </header>
+            <main class="p-4 space-y-4">
                 <div>
-                    <label class="block text-sm font-semibold mb-2">問題描述 *</label>
-                    <textarea id="abnormal-description" required class="w-full bg-gray-800 text-white p-3 rounded-md border border-gray-600 focus:ring-2 focus:ring-red-500 focus:outline-none" rows="4" placeholder="請詳細描述發現的問題..."></textarea>
+                    <label class="block text-sm font-semibold mb-2 text-gray-300">問題描述 *</label>
+                    <textarea id="abnormal-description" required class="w-full bg-slate-700 text-white p-3 rounded-md border border-slate-600 focus:ring-2 focus:ring-red-500 focus:outline-none" rows="3" placeholder="請描述發現的問題..."></textarea>
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold mb-2">上傳照片（選填）</label>
-                    <input type="file" id="abnormal-photo" accept="image/*,video/*" capture="environment" class="hidden">
-                    <button id="abnormal-photo-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors">📷 拍攝照片</button>
-                    <div id="abnormal-photo-preview-container" class="hidden mt-3">
-                        <img id="abnormal-photo-preview" class="w-full rounded-md border border-gray-600">
-                        <button id="remove-abnormal-photo" class="w-full mt-2 bg-gray-700 hover:bg-gray-600 text-white py-1 px-3 rounded-md text-sm transition-colors">移除照片</button>
+                    <label class="block text-sm font-semibold mb-2 text-gray-300">上傳照片（選填）</label>
+                    <input type="file" id="abnormal-photo" accept="image/*" capture="environment" class="hidden">
+                    <button id="photo-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors">
+                        拍攝或選擇照片
+                    </button>
+                    <div id="photo-preview-container" class="hidden mt-3">
+                        <img id="photo-preview" class="w-full rounded-md border border-slate-600">
+                        <button id="remove-photo" class="w-full mt-2 bg-slate-700 hover:bg-slate-600 text-white py-1 px-3 rounded-md text-sm transition-colors">
+                            移除照片
+                        </button>
                     </div>
                 </div>
-                <button id="submit-abnormal-inspection" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-md transition-colors shadow-lg">
-                    提交異常巡檢
+            </main>
+            <footer class="sticky bottom-0 bg-slate-800 p-4 border-t border-slate-700 flex gap-3">
+                <button id="cancel-abnormal" class="flex-1 bg-slate-600 hover:bg-slate-500 text-white py-3 rounded-md font-medium transition-colors">
+                    取消
                 </button>
-                <p id="abnormal-status" class="text-center text-sm h-5"></p>
-            </div>
-        </div>
-
-        <!-- 異常回報區塊 (預設隱藏) -->
-        <div id="abnormal-report-section" class="hidden w-full bg-gray-900 p-4 rounded-lg border border-gray-700 text-left">
-            <h3 class="text-lg font-bold text-yellow-400 mb-3">回報異常狀況</h3>
-            <textarea id="report-description" class="w-full bg-gray-800 text-white p-2 rounded-md border border-gray-600 focus:ring-2 focus:ring-yellow-500 focus:outline-none" rows="3" placeholder="請在此描述異常狀況..."></textarea>
-            <input type="file" id="report-photo" accept="image/*,video/*" capture="environment" class="hidden">
-            <button id="report-photo-button" class="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md transition-colors">拍攝照片/影片</button>
-            <img id="report-photo-preview" class="hidden w-full rounded-md my-3">
-            <button id="submit-report-button" class="w-full mt-3 bg-yellow-600 hover:bg-yellow-700 text-black font-bold py-2 px-3 rounded-md transition-colors">提交回報</button>
-            <p id="report-status" class="text-center mt-2 h-5"></p>
+                <button id="confirm-abnormal" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-md font-medium transition-colors">
+                    確認異常
+                </button>
+            </footer>
         </div>
     </div>
 
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, doc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         const firebaseConfig = {
@@ -97,85 +122,190 @@
             appId: "1:1094359521084:web:f24d8dd4fd68c3e670f039",
             measurementId: "G-MJ417JZWR6"
         };
-        
-        const mainMessage = document.getElementById('main-message');
-        const reportSection = document.getElementById('abnormal-report-section');
-        let db, auth, inspectorName, pointId, pointName;
-        let currentInspectionRecord = null; // 儲存本次巡檢記錄
-        let editingStatus = null;           // 編輯時的臨時狀態
-        let editingPhotoBase64 = null;      // 編輯時的臨時照片
 
-        // 獲取裝置資訊（詳細版）
-        function getDeviceInfo() {
-            const ua = navigator.userAgent;
-            let browser = 'Unknown';
-            let browserVersion = '';
-            let os = 'Unknown';
-            let osVersion = '';
-            let deviceModel = '';
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
 
-            // 偵測瀏覽器和版本
-            if (ua.indexOf('Edg') > -1) {
-                browser = 'Edge';
-                const match = ua.match(/Edg\/([0-9.]+)/);
-                if (match) browserVersion = match[1];
-            } else if (ua.indexOf('Chrome') > -1) {
-                browser = 'Chrome';
-                const match = ua.match(/Chrome\/([0-9.]+)/);
-                if (match) browserVersion = match[1];
-            } else if (ua.indexOf('Safari') > -1) {
-                browser = 'Safari';
-                const match = ua.match(/Version\/([0-9.]+)/);
-                if (match) browserVersion = match[1];
-            } else if (ua.indexOf('Firefox') > -1) {
-                browser = 'Firefox';
-                const match = ua.match(/Firefox\/([0-9.]+)/);
-                if (match) browserVersion = match[1];
+        // 巡檢點和子項目定義
+        const inspectionConfig = {
+            'building-a': {
+                name: 'A棟',
+                items: [
+                    '電燈、門窗是否完全關閉(土地公及AB棟走道除外)',
+                    '吊鉤是否上升到安全高度',
+                    '急停開關是否關閉',
+                    '吊車停的位置是否洽當',
+                    '現場風管、風槍是否有漏氣情形',
+                    '廠內氣窗是否關閉',
+                    '保全系統是否設定',
+                    '是否有人加班超過22:30;若有請通知新光保全04-8332700',
+                    '其他異常情形回報'
+                ]
+            },
+            'building-b': {
+                name: 'B棟',
+                items: [
+                    '空壓機是否關閉(現場有加班人員則不關閉)',
+                    '乙炔是否關閉(現場有加班人員則不關閉)',
+                    '電燈、門窗是否完全關閉(土地公及AB棟走道除外)',
+                    '吊鉤是否上升到安全高度',
+                    '急停開關是否關閉',
+                    '吊車停的位置是否洽當',
+                    '現場風管、風槍是否有漏氣情形',
+                    '廠內氣窗是否關閉',
+                    '保全系統是否設定',
+                    '是否有人加班超過22:30;若有請通知新光保全04-8332700',
+                    '其他異常情形回報'
+                ]
+            },
+            'outdoor-area': {
+                name: '外廠區',
+                items: [
+                    '外庫小門有沒有上鎖(電控有加班人員則不關閉)',
+                    '電控加班人員是否在工作區域加班'
+                ]
+            }
+        };
+
+        // 狀態變數
+        let pointId = null;
+        let pointName = null;
+        let inspectorName = null;
+        let checklistItems = [];
+        let itemStatuses = {}; // { itemIndex: { status: 'normal'|'abnormal', description: '', imageBase64: '' } }
+        let currentEditingItem = null;
+        let tempPhotoBase64 = null;
+
+        // DOM 元素
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingMessage = document.getElementById('loading-message');
+        const mainContent = document.getElementById('main-content');
+        const pointNameEl = document.getElementById('point-name');
+        const inspectorInfo = document.getElementById('inspector-info');
+        const checklistContainer = document.getElementById('checklist-container');
+        const progressText = document.getElementById('progress-text');
+        const progressBar = document.getElementById('progress-bar');
+        const submitButton = document.getElementById('submit-button');
+        const abnormalModal = document.getElementById('abnormal-modal');
+        const modalItemTitle = document.getElementById('modal-item-title');
+        const abnormalDescription = document.getElementById('abnormal-description');
+        const abnormalPhoto = document.getElementById('abnormal-photo');
+        const photoButton = document.getElementById('photo-button');
+        const photoPreviewContainer = document.getElementById('photo-preview-container');
+        const photoPreview = document.getElementById('photo-preview');
+        const removePhotoBtn = document.getElementById('remove-photo');
+        const cancelAbnormalBtn = document.getElementById('cancel-abnormal');
+        const confirmAbnormalBtn = document.getElementById('confirm-abnormal');
+
+        // 初始化
+        async function init() {
+            // 取得 URL 參數
+            const urlParams = new URLSearchParams(window.location.search);
+            pointId = urlParams.get('id');
+
+            if (!pointId || !inspectionConfig[pointId]) {
+                loadingMessage.textContent = '無效的巡檢點 ID';
+                loadingMessage.className = 'mt-6 text-lg text-red-400';
+                return;
             }
 
-            // 偵測作業系統、版本和裝置型號
-            if (ua.indexOf('iPhone') > -1) {
-                os = 'iOS';
-                deviceModel = 'iPhone';
-                const match = ua.match(/OS ([0-9_]+)/);
-                if (match) osVersion = match[1].replace(/_/g, '.');
-            } else if (ua.indexOf('iPad') > -1) {
-                os = 'iOS';
-                deviceModel = 'iPad';
-                const match = ua.match(/OS ([0-9_]+)/);
-                if (match) osVersion = match[1].replace(/_/g, '.');
-            } else if (ua.indexOf('Android') > -1) {
-                os = 'Android';
-                const match = ua.match(/Android ([0-9.]+)/);
-                if (match) osVersion = match[1];
-                // 嘗試解析裝置型號
-                const modelMatch = ua.match(/\(Linux; Android [^;]+; ([^)]+)\)/);
-                if (modelMatch) deviceModel = modelMatch[1];
-            } else if (ua.indexOf('Windows') > -1) {
-                os = 'Windows';
-                if (ua.indexOf('Windows NT 10.0') > -1) osVersion = '10/11';
-                else if (ua.indexOf('Windows NT 6.3') > -1) osVersion = '8.1';
-                else if (ua.indexOf('Windows NT 6.2') > -1) osVersion = '8';
-                else if (ua.indexOf('Windows NT 6.1') > -1) osVersion = '7';
-            } else if (ua.indexOf('Mac') > -1 && ua.indexOf('iPhone') === -1 && ua.indexOf('iPad') === -1) {
-                os = 'macOS';
-                const match = ua.match(/Mac OS X ([0-9_]+)/);
-                if (match) osVersion = match[1].replace(/_/g, '.');
-            } else if (ua.indexOf('Linux') > -1) {
-                os = 'Linux';
+            // 檢查巡檢員姓名
+            inspectorName = localStorage.getItem('inspectorName');
+            if (!inspectorName) {
+                window.location.href = `set-name.html?redirectUrl=${encodeURIComponent(window.location.href)}`;
+                return;
             }
 
-            return {
-                browser: browser,
-                browserVersion: browserVersion,
-                os: os,
-                osVersion: osVersion,
-                deviceModel: deviceModel,
-                userAgent: ua,
-                timestamp: new Date().toISOString()
-            };
+            // Firebase 匿名登入
+            try {
+                await signInAnonymously(auth);
+            } catch (error) {
+                loadingMessage.textContent = '登入失敗: ' + error.message;
+                loadingMessage.className = 'mt-6 text-lg text-red-400';
+                return;
+            }
+
+            // 設定巡檢點資訊
+            const config = inspectionConfig[pointId];
+            pointName = config.name;
+            checklistItems = config.items;
+
+            // 初始化所有項目狀態為未確認
+            checklistItems.forEach((_, index) => {
+                itemStatuses[index] = { status: null, description: '', imageBase64: '' };
+            });
+
+            // 顯示主內容
+            pointNameEl.textContent = pointName;
+            inspectorInfo.textContent = `巡檢員：${inspectorName}`;
+            renderChecklist();
+            updateProgress();
+
+            loadingScreen.classList.add('hidden');
+            mainContent.classList.remove('hidden');
         }
 
+        // 渲染清單
+        function renderChecklist() {
+            checklistContainer.innerHTML = '';
+            checklistItems.forEach((item, index) => {
+                const status = itemStatuses[index].status;
+                let statusClass = 'pending';
+                let statusIcon = '';
+                let abnormalInfo = '';
+
+                if (status === 'normal') {
+                    statusClass = 'normal';
+                    statusIcon = '<span class="text-green-600 font-bold">V 正常</span>';
+                } else if (status === 'abnormal') {
+                    statusClass = 'abnormal';
+                    statusIcon = '<span class="text-red-600 font-bold">X 異常</span>';
+                    if (itemStatuses[index].description) {
+                        abnormalInfo = `<p class="text-sm text-red-700 mt-2 bg-red-100 p-2 rounded">${itemStatuses[index].description}</p>`;
+                    }
+                }
+
+                const cardHTML = `
+                    <div class="item-card ${statusClass} rounded-lg p-4" data-index="${index}">
+                        <div class="flex justify-between items-start mb-3">
+                            <p class="text-slate-800 font-medium flex-1 pr-2">${index + 1}. ${item}</p>
+                            <div class="flex-shrink-0">${statusIcon}</div>
+                        </div>
+                        ${abnormalInfo}
+                        <div class="flex gap-2 mt-3">
+                            <button class="normal-btn flex-1 ${status === 'normal' ? 'bg-green-600' : 'bg-slate-600 hover:bg-green-600'} text-white py-2 rounded-md text-sm font-medium transition-colors" data-index="${index}">
+                                V 正常
+                            </button>
+                            <button class="abnormal-btn flex-1 ${status === 'abnormal' ? 'bg-red-600' : 'bg-slate-600 hover:bg-red-600'} text-white py-2 rounded-md text-sm font-medium transition-colors" data-index="${index}">
+                                X 異常
+                            </button>
+                        </div>
+                    </div>
+                `;
+                checklistContainer.insertAdjacentHTML('beforeend', cardHTML);
+            });
+        }
+
+        // 更新進度
+        function updateProgress() {
+            const total = checklistItems.length;
+            const completed = Object.values(itemStatuses).filter(s => s.status !== null).length;
+            progressText.textContent = `${completed} / ${total}`;
+            progressBar.style.width = `${(completed / total) * 100}%`;
+
+            if (completed === total) {
+                submitButton.disabled = false;
+                submitButton.textContent = '提交巡檢結果';
+                submitButton.className = 'w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg text-lg transition-colors';
+            } else {
+                submitButton.disabled = true;
+                submitButton.textContent = `請完成所有項目確認 (${total - completed} 項未確認)`;
+                submitButton.className = 'w-full bg-gray-600 text-white font-bold py-4 rounded-lg text-lg transition-colors disabled:opacity-50';
+            }
+        }
+
+        // 壓縮圖片
         function compressImage(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -199,585 +329,217 @@
             });
         }
 
-        // 提交巡檢記錄（包含狀態）
-        async function submitInspectionWithStatus(status, description = null, imageBase64 = null) {
-            const pointRef = doc(db, 'inspectionPoints', pointId);
-            const deviceInfo = getDeviceInfo();
+        // 開啟異常 Modal
+        function openAbnormalModal(index) {
+            currentEditingItem = index;
+            modalItemTitle.textContent = `項目 ${index + 1}: ${checklistItems[index]}`;
+            abnormalDescription.value = itemStatuses[index].description || '';
+            tempPhotoBase64 = itemStatuses[index].imageBase64 || null;
+
+            if (tempPhotoBase64) {
+                photoPreview.src = tempPhotoBase64;
+                photoPreviewContainer.classList.remove('hidden');
+            } else {
+                photoPreviewContainer.classList.add('hidden');
+            }
+
+            abnormalModal.classList.remove('hidden');
+        }
+
+        // 關閉異常 Modal
+        function closeAbnormalModal() {
+            abnormalModal.classList.add('hidden');
+            currentEditingItem = null;
+            tempPhotoBase64 = null;
+            abnormalDescription.value = '';
+            abnormalPhoto.value = '';
+            photoPreviewContainer.classList.add('hidden');
+        }
+
+        // 確認異常
+        function confirmAbnormal() {
+            const description = abnormalDescription.value.trim();
+            if (!description) {
+                alert('請填寫問題描述');
+                return;
+            }
+
+            itemStatuses[currentEditingItem] = {
+                status: 'abnormal',
+                description: description,
+                imageBase64: tempPhotoBase64 || ''
+            };
+
+            closeAbnormalModal();
+            renderChecklist();
+            updateProgress();
+        }
+
+        // 標記正常
+        function markAsNormal(index) {
+            itemStatuses[index] = { status: 'normal', description: '', imageBase64: '' };
+            renderChecklist();
+            updateProgress();
+        }
+
+        // 取得裝置資訊
+        function getDeviceInfo() {
+            const ua = navigator.userAgent;
+            let browser = 'Unknown', browserVersion = '', os = 'Unknown', osVersion = '', deviceModel = '';
+
+            if (ua.indexOf('Edg') > -1) {
+                browser = 'Edge';
+                const match = ua.match(/Edg\/([0-9.]+)/);
+                if (match) browserVersion = match[1];
+            } else if (ua.indexOf('Chrome') > -1) {
+                browser = 'Chrome';
+                const match = ua.match(/Chrome\/([0-9.]+)/);
+                if (match) browserVersion = match[1];
+            } else if (ua.indexOf('Safari') > -1) {
+                browser = 'Safari';
+                const match = ua.match(/Version\/([0-9.]+)/);
+                if (match) browserVersion = match[1];
+            }
+
+            if (ua.indexOf('Android') > -1) {
+                os = 'Android';
+                const match = ua.match(/Android ([0-9.]+)/);
+                if (match) osVersion = match[1];
+                const modelMatch = ua.match(/\(Linux; Android [^;]+; ([^)]+)\)/);
+                if (modelMatch) deviceModel = modelMatch[1];
+            } else if (ua.indexOf('iPhone') > -1 || ua.indexOf('iPad') > -1) {
+                os = 'iOS';
+                deviceModel = ua.indexOf('iPhone') > -1 ? 'iPhone' : 'iPad';
+                const match = ua.match(/OS ([0-9_]+)/);
+                if (match) osVersion = match[1].replace(/_/g, '.');
+            } else if (ua.indexOf('Windows') > -1) {
+                os = 'Windows';
+            }
+
+            return { browser, browserVersion, os, osVersion, deviceModel, userAgent: ua };
+        }
+
+        // 提交巡檢
+        async function submitInspection() {
+            submitButton.disabled = true;
+            submitButton.textContent = '正在提交...';
 
             try {
-                mainMessage.textContent = '正在儲存巡檢記錄...';
-                mainMessage.className = 'text-xl text-gray-300';
-                document.querySelector('.loader').style.display = 'block';
+                const deviceInfo = getDeviceInfo();
+                const hasAbnormal = Object.values(itemStatuses).some(s => s.status === 'abnormal');
+
+                // 整理所有子項目狀態
+                const itemResults = checklistItems.map((item, index) => ({
+                    item: item,
+                    status: itemStatuses[index].status,
+                    description: itemStatuses[index].description || null,
+                    imageBase64: itemStatuses[index].imageBase64 || null
+                }));
 
                 // 寫入巡檢記錄
-                const docRef = await addDoc(collection(db, 'standard_inspection_log'), {
-                    pointId,
-                    inspectorName,
+                await addDoc(collection(db, 'standard_inspection_log'), {
+                    pointId: pointId,
+                    pointName: pointName,
+                    inspectorName: inspectorName,
                     timestamp: serverTimestamp(),
                     deviceInfo: deviceInfo,
-                    status: status,
-                    description: description,
-                    imageBase64: imageBase64
+                    hasAbnormal: hasAbnormal,
+                    itemResults: itemResults
                 });
 
-                // 定義巡檢點名稱對照表
-                const pointsMap = {
-                    'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
-                    'crane-4': '天車-4', 'crane-5': '天車-5',
-                    'acetylene': '乙炔區',
-                    'hook-safety': '吊鉤安全高度',
-                    'emergency-stop': '急停開關',
-                    'factory-lights': '工廠電燈'
-                };
-
-                // 如果是異常，同時寫入 abnormal_reports
-                if (status === 'abnormal') {
-                    await addDoc(collection(db, 'abnormal_reports'), {
-                        pointId: pointId,
-                        pointName: pointsMap[pointId] || pointId,
-                        inspectorName: inspectorName,
-                        description: description,
-                        imageBase64: imageBase64,
-                        timestamp: serverTimestamp(),
-                        status: 'reported',           // 待處理狀態
-                        resolvedBy: null,
-                        resolvedAt: null,
-                        resolution: null,
-                        notificationSent: false,
-                        resolutionNotificationSent: false,
-                        deviceInfo: deviceInfo
-                    });
-                }
-
-                // 儲存本次巡檢記錄到全域變數
-
-                currentInspectionRecord = {
-                    docId: docRef.id,           // 新增：儲存 document ID
-                    pointId: pointId,
-                    pointName: pointsMap[pointId] || pointId,
-                    status: status,
-                    description: description,
-                    imageBase64: imageBase64,
-                    timestamp: new Date()
-                };
-
-                // 顯示完成訊息
-                document.querySelector('.loader').style.display = 'none';
-
-                const displayName = pointsMap[pointId] || pointId; // 取得中文名稱
-
-                if (status === 'normal') {
-                    mainMessage.textContent = `✅ [${displayName}] 巡檢完成 - 正常`;
-                    mainMessage.className = 'text-2xl text-green-400 font-bold';
-                } else {
-                    mainMessage.textContent = `⚠️ [${displayName}] 已記錄異常狀況`;
-                    mainMessage.className = 'text-2xl text-yellow-400 font-bold';
-                }
-
-                if ('vibrate' in navigator) navigator.vibrate(200);
-
-                // 隱藏所有表單
-                document.getElementById('status-selection').classList.add('hidden');
-                document.getElementById('abnormal-details').classList.add('hidden');
-
-                // 顯示「查看本次記錄」按鈕
-                const myReportsButton = document.createElement('button');
-                myReportsButton.textContent = '查看本次記錄';
-                myReportsButton.className = 'mt-6 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg w-full';
-                myReportsButton.onclick = openMyReportsModal;
-                mainMessage.parentElement.appendChild(myReportsButton);
-
-            } catch (error) {
-                document.querySelector('.loader').style.display = 'none';
-                mainMessage.textContent = `儲存失敗: ${error.message}`;
-                mainMessage.className = 'text-xl text-red-400';
-                console.error('儲存巡檢記錄失敗:', error);
-            }
-        }
-
-        async function handleStandardInspection() {
-            const pointRef = doc(db, 'inspectionPoints', pointId);
-            const deviceInfo = getDeviceInfo();
-
-            // 定義巡檢點中文名稱對照表
-            const pointsMap = {
-                'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
-                'crane-4': '天車-4', 'crane-5': '天車-5',
-                'acetylene': '乙炔區',
-                'hook-safety': '吊鉤安全高度',
-                'emergency-stop': '急停開關',
-                'factory-lights': '工廠電燈'
-            };
-            const displayName = pointsMap[pointId] || pointId;
-
-            try {
-                mainMessage.textContent = `正在更新 [${displayName}]...`;
-
-                // 更新巡檢點狀態
-                await updateDoc(pointRef, {
+                // 更新巡檢點狀態 (使用 setDoc 以自動建立文件)
+                await setDoc(doc(db, 'inspectionPoints', pointId), {
+                    name: pointName,
                     status: 'inspected',
-                    inspectorName,
-                    timestamp: serverTimestamp(),
-                    deviceInfo: deviceInfo
-                });
-
-                // 顯示狀態選擇按鈕
-                mainMessage.textContent = `[${displayName}] 巡檢點已確認`;
-                mainMessage.parentElement.querySelector('.loader').style.display = 'none';
-                mainMessage.className = 'text-xl text-gray-300';
-                document.getElementById('status-selection').classList.remove('hidden');
-            } catch (error) {
-                mainMessage.textContent = `更新失敗: ${error.code || error.message}`;
-                mainMessage.parentElement.querySelector('.loader').style.display = 'none';
-                mainMessage.className = 'text-xl text-red-400';
-            }
-        }
-        
-        async function submitAbnormalReport() {
-            const description = document.getElementById('report-description').value.trim();
-            const reportPhotoInput = document.getElementById('report-photo');
-            const reportStatus = document.getElementById('report-status');
-
-            if (!description) {
-                alert('請填寫異常狀況描述！');
-                return;
-            }
-
-            reportStatus.textContent = '正在提交回報...';
-            reportStatus.className = 'text-center mt-2 h-5 text-yellow-400';
-
-            try {
-                let compressedBase64 = null;
-                if (reportPhotoInput.files.length > 0) {
-                    compressedBase64 = await compressImage(reportPhotoInput.files[0]);
-                }
-
-                const pointsMap = {
-                    'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
-                    'crane-4': '天車-4', 'crane-5': '天車-5',
-                    'acetylene': '乙炔區',
-                    'air-compressor': '空壓機',
-                    'hook-safety': '吊鉤安全高度',
-                    'emergency-stop': '急停開關',
-                    'factory-lights': '工廠電燈'
-                };
-
-                const deviceInfo = getDeviceInfo();
-
-                await addDoc(collection(db, 'abnormal_reports'), {
-                    pointId: pointId,
-                    pointName: pointsMap[pointId] || pointId,
                     inspectorName: inspectorName,
-                    description: description,
-                    imageBase64: compressedBase64,
                     timestamp: serverTimestamp(),
-                    status: 'reported',
-                    resolvedBy: null,
-                    resolvedAt: null,
-                    resolution: null,
-                    notificationSent: false,
-                    resolutionNotificationSent: false,
                     deviceInfo: deviceInfo
                 });
 
-                reportStatus.textContent = '異常回報成功！主管已收到 LINE 通知。';
-                reportStatus.className = 'text-center mt-2 h-5 text-green-400';
-
-                // 清空表單
-                document.getElementById('report-description').value = '';
-                const preview = document.getElementById('report-photo-preview');
-                if (preview) preview.classList.add('hidden');
-                reportPhotoInput.value = '';
-
-                if ('vibrate' in navigator) navigator.vibrate([100, 50, 100]);
-
-            } catch (error) {
-                console.error('提交失敗:', error);
-                reportStatus.textContent = `提交失敗: ${error.message}`;
-                reportStatus.className = 'text-center mt-2 h-5 text-red-400';
-            }
-        }
-
-        function openMyReportsModal() {
-            const modal = document.getElementById('my-reports-modal');
-            const body = document.getElementById('my-reports-body');
-
-            modal.classList.remove('hidden');
-
-            if (!currentInspectionRecord) {
-                body.innerHTML = '<p class="text-slate-500 text-center py-10">無本次巡檢記錄。</p>';
-                return;
-            }
-
-            const record = currentInspectionRecord;
-
-            // 查看模式 HTML
-            const viewModeHTML = `
-                <div id="view-mode" class="border border-slate-200 p-4 rounded-lg bg-white">
-                    <div class="flex justify-between items-start mb-2">
-                        <h3 class="font-bold text-lg text-slate-800">${record.pointName}</h3>
-                        <span id="status-badge" class="${record.status === 'normal' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'} px-2 py-1 rounded-full text-xs font-medium">
-                            ${record.status === 'normal' ? '正常' : '異常'}
-                        </span>
-                    </div>
-                    <p class="text-sm text-slate-500 mb-2">${record.timestamp.toLocaleString('zh-TW', { hour12: false })}</p>
-                    ${record.description ? `<p class="text-slate-800 bg-slate-100 p-2 rounded-md mt-2">${record.description}</p>` : ''}
-                    ${record.imageBase64 ? `<img src="${record.imageBase64}" class="w-full rounded-md mt-2 border border-slate-200">` : ''}
-
-                    <button id="edit-record-btn" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
-                        ✏️ 編輯此記錄
-                    </button>
-                </div>
-            `;
-
-            // 編輯模式 HTML
-            const editModeHTML = `
-                <div id="edit-mode" class="hidden border border-blue-300 p-4 rounded-lg bg-blue-50">
-                    <h3 class="font-bold text-lg text-slate-800 mb-4">${record.pointName} - 編輯記錄</h3>
-
-                    <!-- 狀態選擇 -->
-                    <div class="mb-4">
-                        <label class="block text-sm font-semibold mb-2 text-slate-700">巡檢狀態</label>
-                        <div class="flex gap-3">
-                            <button id="edit-status-normal" class="flex-1 py-2 px-4 rounded-md border-2 transition-all ${record.status === 'normal' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-green-600 border-green-300 hover:bg-green-50'}">
-                                ✅ 正常
-                            </button>
-                            <button id="edit-status-abnormal" class="flex-1 py-2 px-4 rounded-md border-2 transition-all ${record.status === 'abnormal' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-600 border-red-300 hover:bg-red-50'}">
-                                ❌ 異常
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- 異常描述 -->
-                    <div id="edit-description-container" class="${record.status === 'normal' ? 'hidden' : ''} mb-4">
-                        <label class="block text-sm font-semibold mb-2 text-slate-700">問題描述</label>
-                        <textarea id="edit-description" class="w-full bg-white text-slate-800 p-3 rounded-md border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none" rows="4">${record.description || ''}</textarea>
-                    </div>
-
-                    <!-- 照片上傳 -->
-                    <div id="edit-photo-container" class="${record.status === 'normal' ? 'hidden' : ''} mb-4">
-                        <label class="block text-sm font-semibold mb-2 text-slate-700">照片/影片</label>
-                        <input type="file" id="edit-photo-input" accept="image/*,video/*" capture="environment" class="hidden">
-                        <button id="edit-photo-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors">
-                            📷 ${record.imageBase64 ? '重新上傳照片' : '上傳照片'}
-                        </button>
-                        <div id="edit-photo-preview-container" class="${record.imageBase64 ? '' : 'hidden'} mt-3">
-                            ${record.imageBase64 ? `
-                                <img id="edit-photo-preview" src="${record.imageBase64}" class="w-full rounded-md border border-slate-300">
-                                <button id="remove-edit-photo" class="w-full mt-2 bg-gray-600 hover:bg-gray-700 text-white py-1 px-3 rounded-md text-sm transition-colors">
-                                    移除照片
-                                </button>
-                            ` : ''}
-                        </div>
-                    </div>
-
-                    <!-- 操作按鈕 -->
-                    <div class="flex gap-3 mt-4">
-                        <button id="save-edit-btn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
-                            💾 儲存變更
-                        </button>
-                        <button id="cancel-edit-btn" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
-                            ❌ 取消
-                        </button>
-                    </div>
-
-                    <p id="edit-status-message" class="text-center text-sm mt-3 h-5"></p>
-                </div>
-            `;
-
-            body.innerHTML = viewModeHTML + editModeHTML;
-
-            // 綁定切換編輯模式按鈕
-            document.getElementById('edit-record-btn').addEventListener('click', switchToEditMode);
-        }
-
-        // 切換到編輯模式
-        function switchToEditMode() {
-            document.getElementById('view-mode').classList.add('hidden');
-            document.getElementById('edit-mode').classList.remove('hidden');
-
-            // 初始化編輯狀態
-            editingStatus = currentInspectionRecord.status;
-            editingPhotoBase64 = currentInspectionRecord.imageBase64;
-
-            // 綁定狀態切換按鈕
-            document.getElementById('edit-status-normal').addEventListener('click', () => {
-                editingStatus = 'normal';
-                updateEditStatusUI();
-            });
-
-            document.getElementById('edit-status-abnormal').addEventListener('click', () => {
-                editingStatus = 'abnormal';
-                updateEditStatusUI();
-            });
-
-            // 綁定照片上傳
-            document.getElementById('edit-photo-btn').addEventListener('click', () => {
-                document.getElementById('edit-photo-input').click();
-            });
-
-            document.getElementById('edit-photo-input').addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    try {
-                        editingPhotoBase64 = await compressImage(file);
-                        const container = document.getElementById('edit-photo-preview-container');
-                        container.classList.remove('hidden');
-                        container.innerHTML = `
-                            <img id="edit-photo-preview" src="${editingPhotoBase64}" class="w-full rounded-md border border-slate-300">
-                            <button id="remove-edit-photo" class="w-full mt-2 bg-gray-600 hover:bg-gray-700 text-white py-1 px-3 rounded-md text-sm transition-colors">
-                                移除照片
-                            </button>
-                        `;
-
-                        // 重新綁定移除按鈕
-                        document.getElementById('remove-edit-photo').addEventListener('click', () => {
-                            editingPhotoBase64 = null;
-                            container.classList.add('hidden');
+                // 如果有異常，寫入異常報告
+                if (hasAbnormal) {
+                    const abnormalItems = itemResults.filter(r => r.status === 'abnormal');
+                    for (const abnormalItem of abnormalItems) {
+                        await addDoc(collection(db, 'abnormal_reports'), {
+                            pointId: pointId,
+                            pointName: pointName,
+                            inspectorName: inspectorName,
+                            itemName: abnormalItem.item,
+                            description: abnormalItem.description,
+                            imageBase64: abnormalItem.imageBase64,
+                            timestamp: serverTimestamp(),
+                            status: 'reported',
+                            resolvedBy: null,
+                            resolvedAt: null,
+                            resolution: null,
+                            notificationSent: false,
+                            resolutionNotificationSent: false,
+                            deviceInfo: deviceInfo
                         });
-                    } catch (error) {
-                        alert('照片處理失敗，請重試');
-                    }
-                }
-            });
-
-            // 移除照片按鈕（如果已有照片）
-            const removePhotoBtn = document.getElementById('remove-edit-photo');
-            if (removePhotoBtn) {
-                removePhotoBtn.addEventListener('click', () => {
-                    editingPhotoBase64 = null;
-                    document.getElementById('edit-photo-preview-container').classList.add('hidden');
-                });
-            }
-
-            // 儲存按鈕
-            document.getElementById('save-edit-btn').addEventListener('click', saveEditedRecord);
-
-            // 取消按鈕
-            document.getElementById('cancel-edit-btn').addEventListener('click', () => {
-                document.getElementById('edit-mode').classList.add('hidden');
-                document.getElementById('view-mode').classList.remove('hidden');
-            });
-        }
-
-        // 更新編輯模式的狀態 UI
-        function updateEditStatusUI() {
-            const normalBtn = document.getElementById('edit-status-normal');
-            const abnormalBtn = document.getElementById('edit-status-abnormal');
-            const descContainer = document.getElementById('edit-description-container');
-            const photoContainer = document.getElementById('edit-photo-container');
-
-            if (editingStatus === 'normal') {
-                normalBtn.className = 'flex-1 py-2 px-4 rounded-md border-2 bg-green-600 text-white border-green-600';
-                abnormalBtn.className = 'flex-1 py-2 px-4 rounded-md border-2 bg-white text-red-600 border-red-300 hover:bg-red-50';
-                descContainer.classList.add('hidden');
-                photoContainer.classList.add('hidden');
-            } else {
-                normalBtn.className = 'flex-1 py-2 px-4 rounded-md border-2 bg-white text-green-600 border-green-300 hover:bg-green-50';
-                abnormalBtn.className = 'flex-1 py-2 px-4 rounded-md border-2 bg-red-600 text-white border-red-600';
-                descContainer.classList.remove('hidden');
-                photoContainer.classList.remove('hidden');
-            }
-        }
-
-        // 儲存編輯後的記錄
-        async function saveEditedRecord() {
-            const statusMessage = document.getElementById('edit-status-message');
-            const description = document.getElementById('edit-description').value.trim();
-            const saveBtn = document.getElementById('save-edit-btn');
-
-            // 驗證：異常狀態必須填寫描述
-            if (editingStatus === 'abnormal' && !description) {
-                statusMessage.textContent = '異常狀態必須填寫問題描述';
-                statusMessage.className = 'text-center text-sm mt-3 text-red-600';
-                return;
-            }
-
-            // 防止重複點擊
-            saveBtn.disabled = true;
-            saveBtn.textContent = '儲存中...';
-            statusMessage.textContent = '正在儲存...';
-            statusMessage.className = 'text-center text-sm mt-3 text-blue-600';
-
-            try {
-                // 更新 Firestore
-                const docRef = doc(db, 'standard_inspection_log', currentInspectionRecord.docId);
-                await updateDoc(docRef, {
-                    status: editingStatus,
-                    description: editingStatus === 'abnormal' ? description : null,
-                    imageBase64: editingStatus === 'abnormal' ? editingPhotoBase64 : null,
-                    lastModified: serverTimestamp()
-                });
-
-                // 更新全域變數
-                currentInspectionRecord.status = editingStatus;
-                currentInspectionRecord.description = editingStatus === 'abnormal' ? description : null;
-                currentInspectionRecord.imageBase64 = editingStatus === 'abnormal' ? editingPhotoBase64 : null;
-
-                // 更新主頁面訊息
-                const mainMessage = document.getElementById('main-message');
-                if (mainMessage) {
-                    if (editingStatus === 'normal') {
-                        mainMessage.textContent = `✅ [${currentInspectionRecord.pointName}] 巡檢完成 - 正常`;
-                        mainMessage.className = 'text-2xl text-green-400 font-bold';
-                    } else {
-                        mainMessage.textContent = `⚠️ [${currentInspectionRecord.pointName}] 已記錄異常狀況`;
-                        mainMessage.className = 'text-2xl text-yellow-400 font-bold';
                     }
                 }
 
                 // 顯示成功訊息
-                statusMessage.textContent = '✅ 儲存成功！';
-                statusMessage.className = 'text-center text-sm mt-3 text-green-600';
-
-                if ('vibrate' in navigator) navigator.vibrate(200);
-
-                // 1 秒後切換回查看模式
-                setTimeout(() => {
-                    openMyReportsModal(); // 重新渲染
-                }, 1000);
+                mainContent.innerHTML = `
+                    <div class="flex flex-col items-center justify-center min-h-screen text-center p-4">
+                        <div class="text-6xl mb-4">${hasAbnormal ? '!!!' : 'OK'}</div>
+                        <h2 class="text-2xl font-bold mb-2">${pointName} 巡檢完成</h2>
+                        <p class="text-gray-400 mb-4">${hasAbnormal ? '已回報異常情形，主管將收到通知' : '所有項目正常'}</p>
+                        <p class="text-sm text-gray-500">巡檢員：${inspectorName}</p>
+                        <p class="text-sm text-gray-500 mt-1">${new Date().toLocaleString('zh-TW')}</p>
+                    </div>
+                `;
 
             } catch (error) {
-                console.error('儲存失敗:', error);
-                statusMessage.textContent = `儲存失敗: ${error.message}`;
-                statusMessage.className = 'text-center text-sm mt-3 text-red-600';
-
-                // 恢復按鈕
-                saveBtn.disabled = false;
-                saveBtn.textContent = '💾 儲存變更';
+                console.error('提交失敗:', error);
+                alert('提交失敗: ' + error.message);
+                submitButton.disabled = false;
+                submitButton.textContent = '提交巡檢結果';
             }
         }
 
-        async function main() {
-            if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
-                mainMessage.textContent = 'Firebase 設定錯誤！';
-                return;
+        // 事件綁定
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('normal-btn')) {
+                const index = parseInt(e.target.dataset.index);
+                markAsNormal(index);
+            } else if (e.target.classList.contains('abnormal-btn')) {
+                const index = parseInt(e.target.dataset.index);
+                openAbnormalModal(index);
             }
-            const urlParams = new URLSearchParams(window.location.search);
-            pointId = urlParams.get('id');
-            if (!pointId) {
-                mainMessage.textContent = '無效的巡檢點 ID。';
-                return;
-            }
-
-            // **已修改**：檢查姓名，若無則導向設定頁面
-            inspectorName = localStorage.getItem('inspectorName');
-            if (!inspectorName) {
-                mainMessage.textContent = '首次使用，正在導向簽名頁面...';
-                // 將當前頁面網址作為參數傳遞，以便設定後能跳轉回來
-                const currentUrl = window.location.href;
-                window.location.href = `set-name.html?redirectUrl=${encodeURIComponent(currentUrl)}`;
-                return; // 結束執行，等待跳轉
-            }
-
-            try {
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                await signInAnonymously(auth);
-                await handleStandardInspection();
-            } catch (error) {
-                mainMessage.textContent = `連線失敗: ${error.code || error.message}`;
-            }
-        }
-
-        // ========== 綁定狀態選擇和異常巡檢事件 ==========
-
-        // 「正常」按鈕點擊
-        document.getElementById('normal-button').addEventListener('click', () => {
-            submitInspectionWithStatus('normal');
         });
 
-        // 「異常」按鈕點擊 - 顯示異常詳情表單
-        document.getElementById('abnormal-button').addEventListener('click', () => {
-            document.getElementById('status-selection').classList.add('hidden');
-            document.getElementById('abnormal-details').classList.remove('hidden');
-        });
+        photoButton.addEventListener('click', () => abnormalPhoto.click());
 
-        // 「拍攝照片」按鈕點擊
-        document.getElementById('abnormal-photo-button').addEventListener('click', () => {
-            document.getElementById('abnormal-photo').click();
-        });
-
-        // 照片選擇後處理
-        let abnormalPhotoBase64 = null;
-        document.getElementById('abnormal-photo').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (file) {
+        abnormalPhoto.addEventListener('change', async (e) => {
+            if (e.target.files && e.target.files[0]) {
                 try {
-                    // 壓縮照片
-                    abnormalPhotoBase64 = await compressImage(file);
-
-                    // 顯示預覽
-                    document.getElementById('abnormal-photo-preview').src = abnormalPhotoBase64;
-                    document.getElementById('abnormal-photo-preview-container').classList.remove('hidden');
+                    tempPhotoBase64 = await compressImage(e.target.files[0]);
+                    photoPreview.src = tempPhotoBase64;
+                    photoPreviewContainer.classList.remove('hidden');
                 } catch (error) {
-                    console.error('照片處理失敗:', error);
-                    alert('照片處理失敗，請重試');
+                    alert('圖片處理失敗');
                 }
             }
         });
 
-        // 「移除照片」按鈕點擊
-        document.getElementById('remove-abnormal-photo').addEventListener('click', () => {
-            abnormalPhotoBase64 = null;
-            document.getElementById('abnormal-photo').value = '';
-            document.getElementById('abnormal-photo-preview-container').classList.add('hidden');
+        removePhotoBtn.addEventListener('click', () => {
+            tempPhotoBase64 = null;
+            abnormalPhoto.value = '';
+            photoPreviewContainer.classList.add('hidden');
         });
 
-        // 「提交異常巡檢」按鈕點擊
-        document.getElementById('submit-abnormal-inspection').addEventListener('click', async () => {
-            const description = document.getElementById('abnormal-description').value.trim();
+        cancelAbnormalBtn.addEventListener('click', closeAbnormalModal);
+        confirmAbnormalBtn.addEventListener('click', confirmAbnormal);
+        submitButton.addEventListener('click', submitInspection);
 
-            // 驗證描述是否填寫
-            if (!description) {
-                document.getElementById('abnormal-status').textContent = '請填寫問題描述';
-                document.getElementById('abnormal-status').className = 'text-center text-sm text-red-400';
-                return;
-            }
-
-            // 提交異常巡檢
-            await submitInspectionWithStatus('abnormal', description, abnormalPhotoBase64);
+        abnormalModal.addEventListener('click', (e) => {
+            if (e.target === abnormalModal) closeAbnormalModal();
         });
 
-        // 綁定異常回報相關事件
-        document.getElementById('report-photo-button').addEventListener('click', () => {
-            document.getElementById('report-photo').click();
-        });
-
-        document.getElementById('report-photo').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const preview = document.getElementById('report-photo-preview');
-                preview.src = URL.createObjectURL(file);
-                preview.classList.remove('hidden');
-            }
-        });
-
-        document.getElementById('submit-report-button').addEventListener('click', submitAbnormalReport);
-
-        // 綁定「我的回報」Modal 關閉事件
-        const myReportsModal = document.getElementById('my-reports-modal');
-        const closeMyReportsModalBtn = document.getElementById('close-my-reports-modal');
-        if (closeMyReportsModalBtn) {
-            closeMyReportsModalBtn.addEventListener('click', () => {
-                myReportsModal.classList.add('hidden');
-            });
-        }
-
-        main();
+        // 啟動
+        init();
     </script>
-
-    <!-- 我的回報 Modal -->
-    <div id="my-reports-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <header class="flex items-center justify-between p-5 border-b bg-white rounded-t-lg">
-                <h2 class="text-xl font-bold text-slate-800">本次巡檢記錄</h2>
-                <button id="close-my-reports-modal" class="text-slate-400 hover:text-slate-800 text-3xl leading-none">&times;</button>
-            </header>
-            <main id="my-reports-body" class="p-6 overflow-y-auto space-y-4 bg-slate-50 flex-1"></main>
-        </div>
-    </div>
 
 </body>
 </html>
