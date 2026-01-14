@@ -86,6 +86,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs, updateDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBEtV1Rguj-LzOeLFa-KPUtbAb-9L_bf1E",
@@ -99,6 +100,16 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // 匿名登入後才開始監聽資料
+        signInAnonymously(auth).then(() => {
+            console.log('Firebase 匿名登入成功');
+            listenForUpdates();
+        }).catch((error) => {
+            console.error('Firebase 登入失敗:', error);
+            alert('系統連線失敗，請重新整理頁面');
+        });
 
         const inspectionPoints = [
             { id: 'building-a', name: 'A棟' },
@@ -331,7 +342,7 @@
         closeModalButton.addEventListener('click', closeModal);
         historyModal.addEventListener('click', (e) => { if (e.target === historyModal) closeModal(); });
 
-        listenForUpdates();
+        // listenForUpdates() 已移至 signInAnonymously 成功後呼叫
 
         // ========== 異常處理功能 ==========
 
