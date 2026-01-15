@@ -17,10 +17,11 @@
       ]
     },
     {
-      "collectionGroup": "acetylene_log",
+      "collectionGroup": "abnormal_reports",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
+        { "fieldPath": "pointId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
       ]
     }
   ],

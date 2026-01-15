@@ -6,8 +6,8 @@ const axios = require('axios');
 const LINE_CONFIG = {
   channelAccessToken: 'CGP/yRRpZzlFOpCqrYN3pMGP/AdfYj6Xaz1knjxJr5wWwzWRVwF8pkndiSChHYJG27cmk6sqkNp/L7QFIuevOJIlmTkqA1SuCKAK3oXTOk4ZUUFy0TdcAHXbYyICzs7s4dBOOXXRgmoTgUcKLbotZgdB04t89/1O/w1cDnyilFU=',
   recipientUserIds: [
-    'U460381680455ba3b30bcb01972fe0ffb',  // 主管
-    'U30b5ef382e4ee80a91e6600b6f592e85'   // 老闆
+    'Uf8d0ac749c7a7f4e8b19bb711713da7e',  // 主管
+    'U3f549dade4b3c94f2d404426da73aa29'   // 老闆
   ]
 };
 
@@ -63,6 +63,16 @@ function getTodayDateString() {
 }
 
 /**
+ * 獲取今天開始的時間戳（台北時間 00:00:00）
+ */
+function getTodayStartTimestamp() {
+  const now = new Date();
+  const taipeiTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  taipeiTime.setHours(0, 0, 0, 0);
+  return taipeiTime;
+}
+
+/**
  * 檢查該區域今天是否已發送過完成通知
  */
 async function hasAreaNotificationSentToday(db, pointId) {
@@ -89,6 +99,43 @@ async function recordAreaCompletionNotification(db, pointId, areaName, inspector
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     notificationSent: true
   });
+}
+
+/**
+ * 獲取該區域今天的異常回報
+ */
+async function getAbnormalReportsForArea(db, pointId) {
+  const todayStart = getTodayStartTimestamp();
+
+  const snapshot = await db.collection('abnormal_reports')
+    .where('pointId', '==', pointId)
+    .where('timestamp', '>=', todayStart)
+    .orderBy('timestamp', 'asc')
+    .get();
+
+  const reports = [];
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    reports.push({
+      id: doc.id,
+      itemName: data.itemName || '未知項目',
+      description: data.description || '無描述'
+    });
+  });
+
+  return reports;
+}
+
+/**
+ * 標記異常回報的通知已包含在完成通知中
+ */
+async function markAbnormalReportsAsNotified(db, reportIds) {
+  const batch = db.batch();
+  for (const reportId of reportIds) {
+    const ref = db.collection('abnormal_reports').doc(reportId);
+    batch.update(ref, { notificationIncludedInCompletion: true });
+  }
+  await batch.commit();
 }
 
 /**
@@ -138,7 +185,7 @@ async function recordAllCompleteNotification(db, totalPoints) {
 
 /**
  * Trigger: 當任一巡檢點狀態更新時
- * - 發送該區域完成通知
+ * - 發送該區域完成通知（包含異常項目）
  * - 檢查是否全部完成，若全部完成則發送總完成通知
  */
 exports.onInspectionPointUpdated = functions
@@ -187,44 +234,68 @@ exports.onInspectionPointUpdated = functions
         return null;
       }
 
+      // 獲取該區域今天的異常回報
+      const abnormalReports = await getAbnormalReportsForArea(db, pointId);
+      console.log(`${areaName} 有 ${abnormalReports.length} 個異常項目`);
+
       // 檢查是否全部完成
       const { allComplete, totalPoints, inspectedPoints } = await checkAllInspectionsComplete(db);
 
+      // 構建訊息
       let message;
 
       if (allComplete) {
-        // 最後一區完成，合併顯示區域完成與總完成通知
+        // 最後一區完成
         console.log(`🎉 ${areaName} 巡檢完成，且為最後一區，發送合併通知`);
 
-        message = `
-🎉 今日巡檢全部完成！
+        message = `🎉 今日巡檢全部完成！
 
 ✅ ${areaName} 巡檢完成
 巡檢員：${after.inspectorName || '未知'}
-完成時間：${timeString}
+完成時間：${timeString}`;
 
-所有 ${totalPoints} 個區域已全部完成巡檢。
-感謝辛苦的巡檢工作！
-        `.trim();
+        // 加入異常項目
+        if (abnormalReports.length > 0) {
+          message += '\n';
+          abnormalReports.forEach((report, index) => {
+            message += `\n⚠️ 異常項目${index + 1}：${report.itemName}`;
+            message += `\n異常描述：${report.description}`;
+          });
+        }
+
+        message += `\n\n所有 ${totalPoints} 個區域已全部完成巡檢。
+感謝辛苦的巡檢工作！`;
 
         // 記錄全部完成通知
         await recordAllCompleteNotification(db, totalPoints);
       } else {
-        // 非最後一區，只發送區域完成通知
+        // 非最後一區
         console.log(`✅ ${areaName} 巡檢完成，當前進度: ${inspectedPoints}/${totalPoints}`);
 
-        message = `
-✅ ${areaName} 巡檢完成
+        message = `✅ ${areaName} 巡檢完成
 
 巡檢員：${after.inspectorName || '未知'}
-完成時間：${timeString}
+完成時間：${timeString}`;
 
-今日進度：${inspectedPoints}/${totalPoints} 區
-        `.trim();
+        // 加入異常項目
+        if (abnormalReports.length > 0) {
+          abnormalReports.forEach((report, index) => {
+            message += `\n\n⚠️ 異常項目${index + 1}：${report.itemName}`;
+            message += `\n異常描述：${report.description}`;
+          });
+        }
+
+        message += `\n\n今日進度：${inspectedPoints}/${totalPoints} 區`;
       }
 
       // 發送 LINE 通知
       await sendLineMessage(LINE_CONFIG.recipientUserIds, message);
+
+      // 標記異常回報已包含在完成通知中
+      if (abnormalReports.length > 0) {
+        const reportIds = abnormalReports.map(r => r.id);
+        await markAbnormalReportsAsNotified(db, reportIds);
+      }
 
       // 記錄區域完成通知（防重複）
       await recordAreaCompletionNotification(db, pointId, areaName, after.inspectorName);

@@ -12,8 +12,8 @@ const LINE_CONFIG = {
   channelId: '2007534866',
   // 多個接收者的 User ID 陣列
   recipientUserIds: [
-    'U460381680455ba3b30bcb01972fe0ffb',  // 主管
-    'U30b5ef382e4ee80a91e6600b6f592e85'   // 老闆
+    'Uf8d0ac749c7a7f4e8b19bb711713da7e',  // 主管
+    'U3f549dade4b3c94f2d404426da73aa29'   // 老闆
   ]
 };
 
@@ -97,8 +97,9 @@ async function sendLineMessage(userIds, messages) {
 }
 
 /**
- * Trigger 1: 新異常回報時自動發送通知給主管（支援照片）
+ * Trigger 1: 新異常回報時記錄到 Google Sheets
  * 當 abnormal_reports collection 新增文件時觸發
+ * 注意：LINE 通知改為在區域完成時一併發送（onInspectionComplete.js）
  */
 exports.onAbnormalReportCreated = functions
   .region('asia-east1')
@@ -108,40 +109,11 @@ exports.onAbnormalReportCreated = functions
     const report = snapshot.data();
 
     console.log('偵測到新異常回報:', context.params.reportId);
-
-    // 建立文字訊息（包含時區修正）
-    const itemInfo = report.itemName ? `\n異常項目：${report.itemName}` : '';
-    const textMessage = `
-⚠️ 新異常回報
-巡檢點：${report.pointName}${itemInfo}
-回報人：${report.inspectorName}
-時間：${report.timestamp.toDate().toLocaleString('zh-TW', {
-  timeZone: 'Asia/Taipei',
-  hour12: false,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit'
-})}
-
-異常描述：
-${report.description}
-
-請儘速安排處理。
-    `.trim();
+    console.log('異常項目:', report.itemName || '未知');
+    console.log('注意：LINE 通知將在區域完成時一併發送');
 
     try {
-      // 準備要發送的訊息陣列
-      const messagesToSend = [
-        {
-          type: 'text',
-          text: textMessage
-        }
-      ];
-
-      // 如果有照片，上傳並加入圖片訊息
+      // 如果有照片，上傳到 Storage
       let imageUrl = null;
       if (report.imageBase64) {
         console.log('偵測到異常回報包含照片，準備上傳...');
@@ -151,20 +123,10 @@ ${report.description}
 
         if (imageUrl) {
           console.log('照片上傳成功，URL:', imageUrl);
-
-          // 加入圖片訊息
-          messagesToSend.push({
-            type: 'image',
-            originalContentUrl: imageUrl,
-            previewImageUrl: imageUrl  // 使用相同的 URL 作為預覽圖
-          });
         } else {
-          console.warn('照片上傳失敗，將僅發送文字訊息');
+          console.warn('照片上傳失敗');
         }
       }
-
-      // 發送 LINE 通知給所有接收者（主管和老闆）
-      await sendLineMessage(LINE_CONFIG.recipientUserIds, messagesToSend);
 
       // 同步到 Google Sheets
       await sheetsService.logAbnormalReport({
@@ -174,22 +136,21 @@ ${report.description}
         inspectorName: report.inspectorName,
         deviceInfo: report.deviceInfo || {},
         description: report.description,
-        imageBase64: report.imageBase64  // sheetsService 會自行處理照片上傳
+        imageBase64: report.imageBase64
       });
 
-      // 更新文件，標記通知已發送，並儲存圖片 URL（如果有）
-      const updateData = {
-        notificationSent: true
-      };
+      // 更新文件，儲存圖片 URL（如果有）
+      const updateData = {};
       if (imageUrl) {
         updateData.imageUrl = imageUrl;
       }
-      await snapshot.ref.update(updateData);
+      if (Object.keys(updateData).length > 0) {
+        await snapshot.ref.update(updateData);
+      }
 
-      console.log('異常回報通知處理完成');
+      console.log('異常回報記錄處理完成');
     } catch (error) {
-      console.error('處理異常回報通知失敗:', error);
-      // 即使通知失敗也不拋出錯誤，避免重試
+      console.error('處理異常回報失敗:', error);
     }
   });
 
@@ -355,6 +316,68 @@ exports.lineWebhook = functions
     }
 
     return res.status(200).send('OK');
+  });
+
+/**
+ * 清理並重建巡檢點（一次性使用）
+ * URL: https://asia-east1-factory-inspection-system.cloudfunctions.net/cleanupInspectionPoints
+ */
+exports.cleanupInspectionPoints = functions
+  .region('asia-east1')
+  .https
+  .onRequest(async (req, res) => {
+    console.log('開始清理巡檢點資料...');
+
+    const NEW_POINTS = [
+      { id: 'building-a', name: 'A棟' },
+      { id: 'building-b', name: 'B棟' },
+      { id: 'outdoor-area', name: '外廠區' }
+    ];
+
+    try {
+      const db = admin.firestore();
+
+      // 1. 刪除所有現有巡檢點
+      const snapshot = await db.collection('inspectionPoints').get();
+      const deletePromises = snapshot.docs.map(doc => doc.ref.delete());
+      await Promise.all(deletePromises);
+      console.log(`已刪除 ${snapshot.size} 個舊巡檢點`);
+
+      // 2. 建立新的 3 個區域
+      for (const point of NEW_POINTS) {
+        await db.collection('inspectionPoints').doc(point.id).set({
+          name: point.name,
+          status: 'pending',
+          inspectorName: null,
+          timestamp: null
+        });
+      }
+      console.log('已建立 3 個新巡檢區域');
+
+      // 3. 清理今天的通知紀錄
+      const today = new Date();
+      const taipeiTime = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+      const todayStr = `${taipeiTime.getFullYear()}-${String(taipeiTime.getMonth() + 1).padStart(2, '0')}-${String(taipeiTime.getDate()).padStart(2, '0')}`;
+
+      const areaNotifs = await db.collection('area_completion_notifications').where('date', '==', todayStr).get();
+      await Promise.all(areaNotifs.docs.map(doc => doc.ref.delete()));
+
+      const completeNotifs = await db.collection('completion_notifications').where('date', '==', todayStr).get();
+      await Promise.all(completeNotifs.docs.map(doc => doc.ref.delete()));
+
+      console.log('已清理今天的通知紀錄');
+
+      return res.status(200).json({
+        success: true,
+        message: '清理完成！',
+        deletedPoints: snapshot.size,
+        newPoints: NEW_POINTS.map(p => p.name)
+      });
+
+    } catch (error) {
+      console.error('清理失敗:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
   });
 
 // 匯入定時重置功能
