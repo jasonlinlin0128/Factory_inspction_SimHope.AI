@@ -17,5 +17,18 @@ service cloud.firestore {
     match /abnormal_reports/{document=**} {
       allow read, write: if request.auth != null;
     }
+
+    // 以下 collections 主要由 Cloud Functions 寫入
+    match /completion_notifications/{document=**} {
+      allow read: if request.auth != null;
+    }
+
+    match /area_completion_notifications/{document=**} {
+      allow read: if request.auth != null;
+    }
+
+    match /reset_logs/{document=**} {
+      allow read: if request.auth != null;
+    }
   }
 }

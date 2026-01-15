@@ -11,6 +11,13 @@ const LINE_CONFIG = {
   ]
 };
 
+// 區域名稱對照
+const AREA_NAMES = {
+  'building-a': 'A棟',
+  'building-b': 'B棟',
+  'outdoor-area': '外廠區'
+};
+
 /**
  * 發送 LINE 訊息（簡化版）
  */
@@ -56,13 +63,13 @@ function getTodayDateString() {
 }
 
 /**
- * 檢查今天是否已發送完成通知
+ * 檢查該區域今天是否已發送過完成通知
  */
-async function hasNotificationSentToday(db) {
+async function hasAreaNotificationSentToday(db, pointId) {
   const today = getTodayDateString();
-  const snapshot = await db.collection('completion_notifications')
+  const snapshot = await db.collection('area_completion_notifications')
     .where('date', '==', today)
-    .where('notificationSent', '==', true)
+    .where('pointId', '==', pointId)
     .limit(1)
     .get();
 
@@ -70,21 +77,22 @@ async function hasNotificationSentToday(db) {
 }
 
 /**
- * 記錄完成通知發送狀態
+ * 記錄區域完成通知發送狀態
  */
-async function recordCompletionNotification(db, totalPoints) {
+async function recordAreaCompletionNotification(db, pointId, areaName, inspectorName) {
   const today = getTodayDateString();
-  await db.collection('completion_notifications').add({
+  await db.collection('area_completion_notifications').add({
     date: today,
+    pointId: pointId,
+    areaName: areaName,
+    inspectorName: inspectorName,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    totalPoints: totalPoints,
-    completedAt: admin.firestore.FieldValue.serverTimestamp(),
     notificationSent: true
   });
 }
 
 /**
- * 檢查所有巡檢點是否都已完成
+ * 檢查所有巡檢點是否都已完成（用於全部完成通知）
  */
 async function checkAllInspectionsComplete(db) {
   const snapshot = await db.collection('inspectionPoints').get();
@@ -115,7 +123,23 @@ async function checkAllInspectionsComplete(db) {
 }
 
 /**
- * Trigger: 當任一巡檢點狀態更新時檢查是否全部完成
+ * 記錄全部完成通知發送狀態
+ */
+async function recordAllCompleteNotification(db, totalPoints) {
+  const today = getTodayDateString();
+  await db.collection('completion_notifications').add({
+    date: today,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    totalPoints: totalPoints,
+    completedAt: admin.firestore.FieldValue.serverTimestamp(),
+    notificationSent: true
+  });
+}
+
+/**
+ * Trigger: 當任一巡檢點狀態更新時
+ * - 發送該區域完成通知
+ * - 檢查是否全部完成，若全部完成則發送總完成通知
  */
 exports.onInspectionPointUpdated = functions
   .region('asia-east1')
@@ -128,68 +152,84 @@ exports.onInspectionPointUpdated = functions
 
     console.log(`巡檢點 ${pointId} 狀態更新: ${before.status} → ${after.status}`);
 
-    // 只在狀態變為 'inspected' 時觸發檢查
+    // 只在狀態變為 'inspected' 時觸發
     if (after.status !== 'inspected') {
-      console.log('狀態未變為 inspected，跳過檢查');
+      console.log('狀態未變為 inspected，跳過');
       return null;
     }
 
     // 如果狀態沒有變化（已經是 inspected），跳過
     if (before.status === 'inspected') {
-      console.log('狀態沒有變化，跳過檢查');
+      console.log('狀態沒有變化，跳過');
       return null;
     }
 
     const db = admin.firestore();
+    const areaName = AREA_NAMES[pointId] || after.name || pointId;
+    const now = new Date();
+    const timeString = now.toLocaleString('zh-TW', {
+      timeZone: 'Asia/Taipei',
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
 
     try {
-      // 檢查今天是否已發送過完成通知
-      const alreadySent = await hasNotificationSentToday(db);
-      if (alreadySent) {
-        console.log('今日已發送過完成通知，跳過');
+      // 檢查該區域今天是否已發送過通知
+      const areaAlreadySent = await hasAreaNotificationSentToday(db, pointId);
+
+      if (areaAlreadySent) {
+        console.log(`${areaName} 今日已發送過區域完成通知，跳過`);
         return null;
       }
 
-      // 檢查所有巡檢點是否都已完成
+      // 檢查是否全部完成
       const { allComplete, totalPoints, inspectedPoints } = await checkAllInspectionsComplete(db);
 
-      if (!allComplete) {
-        console.log(`尚未全部完成，當前進度: ${inspectedPoints}/${totalPoints}`);
-        return null;
+      let message;
+
+      if (allComplete) {
+        // 最後一區完成，合併顯示區域完成與總完成通知
+        console.log(`🎉 ${areaName} 巡檢完成，且為最後一區，發送合併通知`);
+
+        message = `
+🎉 今日巡檢全部完成！
+
+✅ ${areaName} 巡檢完成
+巡檢員：${after.inspectorName || '未知'}
+完成時間：${timeString}
+
+所有 ${totalPoints} 個區域已全部完成巡檢。
+感謝辛苦的巡檢工作！
+        `.trim();
+
+        // 記錄全部完成通知
+        await recordAllCompleteNotification(db, totalPoints);
+      } else {
+        // 非最後一區，只發送區域完成通知
+        console.log(`✅ ${areaName} 巡檢完成，當前進度: ${inspectedPoints}/${totalPoints}`);
+
+        message = `
+✅ ${areaName} 巡檢完成
+
+巡檢員：${after.inspectorName || '未知'}
+完成時間：${timeString}
+
+今日進度：${inspectedPoints}/${totalPoints} 區
+        `.trim();
       }
 
-      console.log('✅ 所有巡檢點已完成，準備發送通知');
-
-      // 建立完成通知訊息
-      const now = new Date();
-      const completionMessage = `
-🎉 巡檢完成通知
-
-所有 ${totalPoints} 個巡檢點已全部完成！
-
-完成時間：${now.toLocaleString('zh-TW', {
-  timeZone: 'Asia/Taipei',
-  hour12: false,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit'
-})}
-最後完成點：${after.name || pointId}
-巡檢員：${after.inspectorName || '未知'}
-
-感謝辛苦的巡檢工作！
-      `.trim();
-
       // 發送 LINE 通知
-      await sendLineMessage(LINE_CONFIG.recipientUserIds, completionMessage);
+      await sendLineMessage(LINE_CONFIG.recipientUserIds, message);
 
-      // 記錄完成通知（防重複）
-      await recordCompletionNotification(db, totalPoints);
+      // 記錄區域完成通知（防重複）
+      await recordAreaCompletionNotification(db, pointId, areaName, after.inspectorName);
 
-      console.log('完成通知處理完成');
+      console.log(`${areaName} 通知已發送`);
       return null;
 
     } catch (error) {

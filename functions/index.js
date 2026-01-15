@@ -269,8 +269,11 @@ ${after.resolution}
     }
   });
 
+// 儀表板網址
+const DASHBOARD_URL = 'https://jasonlinlin0128.github.io/Factory_inspction_SimHope.AI/index.html';
+
 /**
- * LINE Bot Webhook - 用於接收訊息並取得 User ID
+ * LINE Bot Webhook - 提供儀表板網址及相關指令
  * Webhook URL: https://asia-east1-factory-inspection-system.cloudfunctions.net/lineWebhook
  */
 exports.lineWebhook = functions
@@ -278,7 +281,6 @@ exports.lineWebhook = functions
   .https
   .onRequest(async (req, res) => {
     console.log('收到 LINE Webhook 請求');
-    console.log('Request body:', JSON.stringify(req.body));
 
     // 只處理 POST 請求
     if (req.method !== 'POST') {
@@ -298,18 +300,37 @@ exports.lineWebhook = functions
 
       if (event.type === 'message' && event.message.type === 'text') {
         const userId = event.source.userId;
-        const userName = event.source.type === 'user' ? '個人用戶' : event.source.type;
-        const messageText = event.message.text;
+        const messageText = event.message.text.toLowerCase().trim();
 
-        console.log('='.repeat(50));
-        console.log('📱 收到 LINE 訊息');
         console.log('User ID:', userId);
-        console.log('用戶類型:', userName);
         console.log('訊息內容:', messageText);
-        console.log('='.repeat(50));
-        console.log('');
-        console.log('⚠️ 請將此 User ID 複製並更新到 LINE_CONFIG.supervisorUserId');
-        console.log('');
+
+        let replyMessage = '';
+
+        // 檢查關鍵字
+        if (messageText.includes('儀表板') ||
+            messageText.includes('查看') ||
+            messageText.includes('網址') ||
+            messageText.includes('url') ||
+            messageText.includes('連結') ||
+            messageText.includes('link') ||
+            messageText.includes('巡檢') ||
+            messageText === '1') {
+          // 回覆儀表板網址
+          replyMessage = `📊 巡檢管理儀表板\n\n點擊下方連結查看即時巡檢狀態：\n${DASHBOARD_URL}\n\n功能說明：\n• 查看各區域巡檢狀態\n• 檢視異常回報紀錄\n• 查詢歷史巡檢記錄`;
+        } else if (messageText.includes('help') ||
+                   messageText.includes('幫助') ||
+                   messageText.includes('說明') ||
+                   messageText === '?') {
+          // 回覆使用說明
+          replyMessage = `🔧 巡檢系統 LINE Bot 指令說明\n\n輸入以下關鍵字獲取資訊：\n\n📊 「儀表板」「查看」「網址」「1」\n→ 獲取巡檢管理儀表板連結\n\n❓ 「幫助」「說明」「?」\n→ 顯示此說明訊息\n\n📱 「ID」\n→ 查看您的 LINE User ID`;
+        } else if (messageText.includes('id')) {
+          // 回覆 User ID
+          replyMessage = `📱 您的 LINE User ID\n\n${userId}\n\n此 ID 用於系統管理設定。`;
+        } else {
+          // 預設回覆（快速選單）
+          replyMessage = `👋 您好！我是巡檢系統小助手\n\n請輸入以下指令：\n\n1️⃣ 輸入「1」查看儀表板\n❓ 輸入「?」查看說明\n\n或直接點擊連結：\n${DASHBOARD_URL}`;
+        }
 
         // 回覆訊息
         try {
@@ -317,12 +338,7 @@ exports.lineWebhook = functions
             'https://api.line.me/v2/bot/message/reply',
             {
               replyToken: event.replyToken,
-              messages: [
-                {
-                  type: 'text',
-                  text: `✅ 已記錄您的 User ID\n\n您的 User ID 是：\n${userId}\n\n請將此 ID 提供給系統管理員。`
-                }
-              ]
+              messages: [{ type: 'text', text: replyMessage }]
             },
             {
               headers: {
