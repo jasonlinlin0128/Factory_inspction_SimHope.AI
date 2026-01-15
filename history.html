@@ -36,19 +36,12 @@
 
                 <!-- 巡檢點篩選 -->
                 <div>
-                    <label class="block text-sm font-semibold mb-2">巡檢點</label>
+                    <label class="block text-sm font-semibold mb-2">巡檢區域</label>
                     <select id="point-filter" class="w-full p-2 border border-slate-300 rounded-md">
                         <option value="">全部</option>
-                        <option value="crane-1">天車-1</option>
-                        <option value="crane-2">天車-2</option>
-                        <option value="crane-3">天車-3</option>
-                        <option value="crane-4">天車-4</option>
-                        <option value="crane-5">天車-5</option>
-                        <option value="acetylene">乙炔區</option>
-                        <option value="air-compressor">空壓機</option>
-                        <option value="hook-safety">吊鉤安全高度</option>
-                        <option value="emergency-stop">急停開關</option>
-                        <option value="factory-lights">工廠電燈</option>
+                        <option value="building-a">A棟</option>
+                        <option value="building-b">B棟</option>
+                        <option value="outdoor-area">外廠區</option>
                     </select>
                 </div>
 
@@ -86,7 +79,7 @@
 
         <!-- 結果統計 -->
         <section class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
                 <div>
                     <p class="text-3xl font-bold text-blue-600" id="total-count">0</p>
                     <p class="text-sm text-slate-600">總巡檢次數</p>
@@ -97,11 +90,7 @@
                 </div>
                 <div>
                     <p class="text-3xl font-bold text-purple-600" id="unique-points">0</p>
-                    <p class="text-sm text-slate-600">巡檢點數量</p>
-                </div>
-                <div>
-                    <p class="text-3xl font-bold text-orange-600" id="acetylene-count">0</p>
-                    <p class="text-sm text-slate-600">乙炔區檢查</p>
+                    <p class="text-sm text-slate-600">巡檢區域數</p>
                 </div>
             </div>
         </section>
@@ -113,10 +102,9 @@
                     <thead class="bg-slate-100 border-b">
                         <tr>
                             <th class="px-4 py-3 text-left text-sm font-semibold">時間</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold">巡檢點</th>
+                            <th class="px-4 py-3 text-left text-sm font-semibold">巡檢區域</th>
                             <th class="px-4 py-3 text-left text-sm font-semibold">巡檢員</th>
                             <th class="px-4 py-3 text-left text-sm font-semibold">裝置資訊</th>
-                            <th class="px-4 py-3 text-left text-sm font-semibold">照片</th>
                         </tr>
                     </thead>
                     <tbody id="records-table-body" class="divide-y divide-slate-200">
@@ -162,11 +150,9 @@
         await signInAnonymously(auth);
 
         const pointsMap = {
-            'crane-1': '天車-1', 'crane-2': '天車-2', 'crane-3': '天車-3',
-            'crane-4': '天車-4', 'crane-5': '天車-5',
-            'acetylene': '乙炔區', 'air-compressor': '空壓機',
-            'hook-safety': '吊鉤安全高度',
-            'emergency-stop': '急停開關', 'factory-lights': '工廠電燈'
+            'building-a': 'A棟',
+            'building-b': 'B棟',
+            'outdoor-area': '外廠區'
         };
 
         let currentRecords = [];
@@ -248,20 +234,21 @@
 
             currentRecords = [];
 
-            // 查詢標準巡檢紀錄
-            let standardQuery = query(
-                collection(db, 'standard_inspection_log'),
-                where('timestamp', '>=', startTimestamp),
-                where('timestamp', '<=', endTimestamp),
-                orderBy('timestamp', 'desc')
-            );
-
-            if (pointFilter && pointFilter !== 'acetylene') {
+            // 查詢巡檢紀錄
+            let standardQuery;
+            if (pointFilter) {
+                standardQuery = query(
+                    collection(db, 'standard_inspection_log'),
+                    where('pointId', '==', pointFilter),
+                    where('timestamp', '>=', startTimestamp),
+                    where('timestamp', '<=', endTimestamp),
+                    orderBy('timestamp', 'desc')
+                );
+            } else {
                 standardQuery = query(
                     collection(db, 'standard_inspection_log'),
                     where('timestamp', '>=', startTimestamp),
                     where('timestamp', '<=', endTimestamp),
-                    where('pointId', '==', pointFilter),
                     orderBy('timestamp', 'desc')
                 );
             }
@@ -277,29 +264,6 @@
                     });
                 }
             });
-
-            // 查詢乙炔區紀錄
-            if (!pointFilter || pointFilter === 'acetylene') {
-                const acetyleneQuery = query(
-                    collection(db, 'acetylene_log'),
-                    where('timestamp', '>=', startTimestamp),
-                    where('timestamp', '<=', endTimestamp),
-                    orderBy('timestamp', 'desc')
-                );
-
-                const acetyleneSnapshot = await getDocs(acetyleneQuery);
-                acetyleneSnapshot.forEach(doc => {
-                    const data = doc.data();
-                    if (!inspectorFilter || data.inspectorName === inspectorFilter) {
-                        currentRecords.push({
-                            type: 'acetylene',
-                            pointId: 'acetylene',
-                            ...data,
-                            id: doc.id
-                        });
-                    }
-                });
-            }
 
             // 排序
             currentRecords.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
@@ -326,31 +290,16 @@
                 const time = record.timestamp.toDate().toLocaleString('zh-TW', { hour12: false });
                 const pointName = pointsMap[record.pointId] || record.pointId;
                 const deviceInfo = record.deviceInfo ?
-                    `${record.deviceInfo.browser} / ${record.deviceInfo.os}` : '-';
-
-                const photoCell = record.imageBase64 ?
-                    `<button class="text-blue-600 hover:underline view-photo" data-image="${record.imageBase64}">查看</button>` :
-                    '-';
+                    `${record.deviceInfo.browser || '-'} / ${record.deviceInfo.os || '-'}` : '-';
 
                 row.innerHTML = `
                     <td class="px-4 py-3 text-sm">${time}</td>
                     <td class="px-4 py-3 text-sm font-semibold">${pointName}</td>
-                    <td class="px-4 py-3 text-sm">${record.inspectorName}</td>
+                    <td class="px-4 py-3 text-sm">${record.inspectorName || '-'}</td>
                     <td class="px-4 py-3 text-sm text-slate-500">${deviceInfo}</td>
-                    <td class="px-4 py-3 text-sm">${photoCell}</td>
                 `;
 
                 tbody.appendChild(row);
-            });
-
-            // 綁定照片查看事件
-            document.querySelectorAll('.view-photo').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const modal = document.getElementById('photo-modal');
-                    const img = document.getElementById('photo-modal-img');
-                    img.src = e.target.dataset.image;
-                    modal.classList.remove('hidden');
-                });
             });
         }
 
@@ -363,9 +312,6 @@
 
             const points = new Set(currentRecords.map(r => r.pointId));
             document.getElementById('unique-points').textContent = points.size;
-
-            const acetyleneCount = currentRecords.filter(r => r.type === 'acetylene').length;
-            document.getElementById('acetylene-count').textContent = acetyleneCount;
         }
 
         // 匯出 Excel
@@ -379,12 +325,11 @@
                 const worksheet = XLSX.utils.json_to_sheet(
                     currentRecords.map(record => ({
                         '時間': record.timestamp.toDate().toLocaleString('zh-TW', { hour12: false }),
-                        '巡檢點': pointsMap[record.pointId] || record.pointId,
-                        '巡檢員': record.inspectorName,
+                        '巡檢區域': pointsMap[record.pointId] || record.pointId,
+                        '巡檢員': record.inspectorName || '-',
                         '瀏覽器': record.deviceInfo?.browser || '-',
                         '作業系統': record.deviceInfo?.os || '-',
-                        '裝置型號': record.deviceInfo?.model || '-',
-                        '有照片': record.imageBase64 ? '是' : '否'
+                        '裝置型號': record.deviceInfo?.deviceModel || '-'
                     }))
                 );
 

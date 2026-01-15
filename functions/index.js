@@ -367,11 +367,29 @@ exports.cleanupInspectionPoints = functions
 
       console.log('已清理今天的通知紀錄');
 
+      // 4. 標記今天所有異常回報為已通知（避免重複出現在下次通知中）
+      const todayStart = new Date(taipeiTime);
+      todayStart.setHours(0, 0, 0, 0);
+
+      const abnormalReports = await db.collection('abnormal_reports')
+        .where('timestamp', '>=', todayStart)
+        .get();
+
+      if (!abnormalReports.empty) {
+        const batch = db.batch();
+        abnormalReports.docs.forEach(doc => {
+          batch.update(doc.ref, { notificationIncludedInCompletion: true });
+        });
+        await batch.commit();
+        console.log(`已標記 ${abnormalReports.size} 個異常回報為已通知`);
+      }
+
       return res.status(200).json({
         success: true,
         message: '清理完成！',
         deletedPoints: snapshot.size,
-        newPoints: NEW_POINTS.map(p => p.name)
+        newPoints: NEW_POINTS.map(p => p.name),
+        markedAbnormalReports: abnormalReports.size || 0
       });
 
     } catch (error) {

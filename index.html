@@ -86,7 +86,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs, updateDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch, query, where, getDocs, updateDoc, deleteDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         const firebaseConfig = {
@@ -424,16 +424,34 @@
                         `;
                     }
 
+                    // 操作按鈕區
+                    let actionButtonsHTML = '<div class="flex gap-2 mt-3">';
+
                     // 標記已處理按鈕（只有待處理時顯示）
-                    const resolveButtonHTML = !isResolved ? `
+                    if (!isResolved) {
+                        actionButtonsHTML += `
+                            <button
+                                data-report-id="${report.id}"
+                                data-point-name="${report.pointName}"
+                                data-inspector-name="${report.inspectorName}"
+                                class="resolve-button bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                                標記已處理
+                            </button>
+                        `;
+                    }
+
+                    // 刪除按鈕（所有紀錄都可刪除）
+                    actionButtonsHTML += `
                         <button
                             data-report-id="${report.id}"
                             data-point-name="${report.pointName}"
-                            data-inspector-name="${report.inspectorName}"
-                            class="resolve-button mt-3 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                            標記已處理
+                            class="delete-report-button bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                            刪除紀錄
                         </button>
-                    ` : '';
+                    `;
+                    actionButtonsHTML += '</div>';
+
+                    const resolveButtonHTML = actionButtonsHTML;
 
                     const cardHTML = `
                         <div class="bg-white rounded-lg border-l-4 ${isResolved ? 'border-green-500' : 'border-red-500'} shadow-md p-4">
@@ -469,6 +487,32 @@
         closeAbnormalHistoryBtn.addEventListener('click', closeAbnormalHistoryModal);
         abnormalHistoryModal.addEventListener('click', (e) => {
             if (e.target === abnormalHistoryModal) closeAbnormalHistoryModal();
+        });
+
+        // 刪除異常紀錄功能
+        async function deleteAbnormalReport(reportId, pointName) {
+            if (!confirm(`確定要刪除「${pointName}」的這筆異常紀錄嗎？\n\n此操作無法復原！`)) {
+                return;
+            }
+
+            try {
+                await deleteDoc(doc(db, 'abnormal_reports', reportId));
+                alert('異常紀錄已刪除！');
+                // 重新載入異常紀錄列表
+                openAbnormalHistoryModal();
+            } catch (error) {
+                console.error('刪除失敗:', error);
+                alert('刪除失敗: ' + error.message);
+            }
+        }
+
+        // 綁定刪除按鈕事件
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('delete-report-button')) {
+                const reportId = e.target.dataset.reportId;
+                const pointName = e.target.dataset.pointName;
+                deleteAbnormalReport(reportId, pointName);
+            }
         });
 
         // Excel 匯出功能

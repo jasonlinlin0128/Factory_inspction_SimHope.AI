@@ -19,10 +19,13 @@ const AREA_NAMES = {
 };
 
 /**
- * 發送 LINE 訊息（簡化版）
+ * 發送 LINE 訊息（支援文字和圖片）
+ * @param {string[]} userIds - 接收者 ID 陣列
+ * @param {object[]} messages - 訊息陣列 (LINE message objects)
  */
-async function sendLineMessage(userIds, message) {
+async function sendLineMessage(userIds, messages) {
   const recipients = Array.isArray(userIds) ? userIds : [userIds];
+  const messageArray = Array.isArray(messages) ? messages : [messages];
 
   const promises = recipients.map(async (userId) => {
     try {
@@ -30,19 +33,22 @@ async function sendLineMessage(userIds, message) {
         'https://api.line.me/v2/bot/message/push',
         {
           to: userId,
-          messages: [{ type: 'text', text: message }]
+          messages: messageArray
         },
         {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${LINE_CONFIG.channelAccessToken}`
           },
-          timeout: 10000
+          timeout: 15000
         }
       );
-      console.log(`✓ 完成通知發送成功 (${userId})`);
+      console.log(`✓ 完成通知發送成功 (${userId}), 共 ${messageArray.length} 則訊息`);
     } catch (error) {
       console.error(`✗ 完成通知發送失敗 (${userId}):`, error.message);
+      if (error.response) {
+        console.error('錯誤詳情:', JSON.stringify(error.response.data));
+      }
     }
   });
 
@@ -102,7 +108,7 @@ async function recordAreaCompletionNotification(db, pointId, areaName, inspector
 }
 
 /**
- * 獲取該區域今天的異常回報
+ * 獲取該區域今天尚未通知的異常回報
  */
 async function getAbnormalReportsForArea(db, pointId) {
   const todayStart = getTodayStartTimestamp();
@@ -116,11 +122,15 @@ async function getAbnormalReportsForArea(db, pointId) {
   const reports = [];
   snapshot.forEach(doc => {
     const data = doc.data();
-    reports.push({
-      id: doc.id,
-      itemName: data.itemName || '未知項目',
-      description: data.description || '無描述'
-    });
+    // 只取得尚未包含在完成通知中的異常回報
+    if (!data.notificationIncludedInCompletion) {
+      reports.push({
+        id: doc.id,
+        itemName: data.itemName || '未知項目',
+        description: data.description || '無描述',
+        imageUrl: data.imageUrl || null  // 加入照片 URL
+      });
+    }
   });
 
   return reports;
@@ -234,6 +244,10 @@ exports.onInspectionPointUpdated = functions
         return null;
       }
 
+      // 等待 3 秒，確保異常報告的照片上傳完成
+      console.log('等待照片上傳完成...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
       // 獲取該區域今天的異常回報
       const abnormalReports = await getAbnormalReportsForArea(db, pointId);
       console.log(`${areaName} 有 ${abnormalReports.length} 個異常項目`);
@@ -241,14 +255,15 @@ exports.onInspectionPointUpdated = functions
       // 檢查是否全部完成
       const { allComplete, totalPoints, inspectedPoints } = await checkAllInspectionsComplete(db);
 
-      // 構建訊息
-      let message;
+      // 構建訊息陣列（文字 + 圖片）
+      const lineMessages = [];
+      let textMessage;
 
       if (allComplete) {
         // 最後一區完成
         console.log(`🎉 ${areaName} 巡檢完成，且為最後一區，發送合併通知`);
 
-        message = `🎉 今日巡檢全部完成！
+        textMessage = `🎉 今日巡檢全部完成！
 
 ✅ ${areaName} 巡檢完成
 巡檢員：${after.inspectorName || '未知'}
@@ -256,14 +271,14 @@ exports.onInspectionPointUpdated = functions
 
         // 加入異常項目
         if (abnormalReports.length > 0) {
-          message += '\n';
+          textMessage += '\n';
           abnormalReports.forEach((report, index) => {
-            message += `\n⚠️ 異常項目${index + 1}：${report.itemName}`;
-            message += `\n異常描述：${report.description}`;
+            textMessage += `\n⚠️ 異常項目${index + 1}：${report.itemName}`;
+            textMessage += `\n異常描述：${report.description}`;
           });
         }
 
-        message += `\n\n所有 ${totalPoints} 個區域已全部完成巡檢。
+        textMessage += `\n\n所有 ${totalPoints} 個區域已全部完成巡檢。
 感謝辛苦的巡檢工作！`;
 
         // 記錄全部完成通知
@@ -272,7 +287,7 @@ exports.onInspectionPointUpdated = functions
         // 非最後一區
         console.log(`✅ ${areaName} 巡檢完成，當前進度: ${inspectedPoints}/${totalPoints}`);
 
-        message = `✅ ${areaName} 巡檢完成
+        textMessage = `✅ ${areaName} 巡檢完成
 
 巡檢員：${after.inspectorName || '未知'}
 完成時間：${timeString}`;
@@ -280,16 +295,34 @@ exports.onInspectionPointUpdated = functions
         // 加入異常項目
         if (abnormalReports.length > 0) {
           abnormalReports.forEach((report, index) => {
-            message += `\n\n⚠️ 異常項目${index + 1}：${report.itemName}`;
-            message += `\n異常描述：${report.description}`;
+            textMessage += `\n\n⚠️ 異常項目${index + 1}：${report.itemName}`;
+            textMessage += `\n異常描述：${report.description}`;
           });
         }
 
-        message += `\n\n今日進度：${inspectedPoints}/${totalPoints} 區`;
+        textMessage += `\n\n今日進度：${inspectedPoints}/${totalPoints} 區`;
+      }
+
+      // 加入文字訊息
+      lineMessages.push({ type: 'text', text: textMessage });
+
+      // 加入異常照片（最多 4 張，因為 LINE 單次推送最多 5 則訊息）
+      const reportsWithImages = abnormalReports.filter(r => r.imageUrl);
+      const imagesToSend = reportsWithImages.slice(0, 4);
+
+      if (imagesToSend.length > 0) {
+        console.log(`附加 ${imagesToSend.length} 張異常照片`);
+        imagesToSend.forEach(report => {
+          lineMessages.push({
+            type: 'image',
+            originalContentUrl: report.imageUrl,
+            previewImageUrl: report.imageUrl
+          });
+        });
       }
 
       // 發送 LINE 通知
-      await sendLineMessage(LINE_CONFIG.recipientUserIds, message);
+      await sendLineMessage(LINE_CONFIG.recipientUserIds, lineMessages);
 
       // 標記異常回報已包含在完成通知中
       if (abnormalReports.length > 0) {
