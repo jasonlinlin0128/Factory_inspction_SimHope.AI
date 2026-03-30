@@ -157,11 +157,9 @@
 
         let currentRecords = [];
 
-        // 初始化
-        document.addEventListener('DOMContentLoaded', async () => {
-            await loadInspectorList();
-            await loadRecords();
-        });
+        // 初始化（直接呼叫，不用 DOMContentLoaded，因為 module 本身已是 deferred）
+        await loadInspectorList();
+        await loadRecords();
 
         // 時間範圍切換
         document.getElementById('time-range').addEventListener('change', (e) => {

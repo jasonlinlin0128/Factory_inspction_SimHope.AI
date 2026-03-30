@@ -212,7 +212,7 @@
                 const batch = writeBatch(db);
                 inspectionPoints.forEach(point => {
                     const pointRef = doc(db, 'inspectionPoints', point.id);
-                    batch.set(pointRef, { name: point.name, status: 'pending', inspectorName: null, timestamp: null });
+                    batch.set(pointRef, { name: point.name, status: 'pending', inspectorName: null, timestamp: null, deviceInfo: null });
                 });
                 await batch.commit();
                 alert('所有巡檢點狀態已成功重置！');
