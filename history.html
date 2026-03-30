@@ -130,6 +130,20 @@
         </div>
     </div>
 
+    <!-- 異常詳情 Modal -->
+    <div id="abnormal-detail-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-40">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <header class="flex items-center justify-between p-5 border-b bg-red-50">
+                <div>
+                    <h2 class="text-xl font-bold text-red-700">異常巡檢詳情</h2>
+                    <p id="detail-subtitle" class="text-sm text-slate-500 mt-1"></p>
+                </div>
+                <button id="close-abnormal-detail" class="text-slate-400 hover:text-slate-800 text-3xl leading-none">&times;</button>
+            </header>
+            <main id="abnormal-detail-body" class="p-6 overflow-y-auto space-y-4 bg-slate-50 flex-1"></main>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getFirestore, collection, query, where, orderBy, getDocs, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -284,22 +298,117 @@
 
             currentRecords.forEach(record => {
                 const row = document.createElement('tr');
-                row.className = 'hover:bg-slate-50';
+                const isAbnormal = record.status === 'abnormal';
+
+                if (isAbnormal) {
+                    row.className = 'bg-red-100 border-l-4 border-red-500 cursor-pointer hover:bg-red-200 transition-colors';
+                    row.addEventListener('click', () => openAbnormalDetailModal(record));
+                } else {
+                    row.className = 'hover:bg-slate-50';
+                }
 
                 const time = record.timestamp.toDate().toLocaleString('zh-TW', { hour12: false });
                 const pointName = pointsMap[record.pointId] || record.pointId;
                 const deviceInfo = record.deviceInfo ?
                     `${record.deviceInfo.browser || '-'} / ${record.deviceInfo.os || '-'}` : '-';
+                const abnormalBadge = isAbnormal
+                    ? ' <span class="text-xs bg-red-200 text-red-800 px-2 py-0.5 rounded-full font-semibold align-middle">⚠ 異常</span>'
+                    : '';
+                const clickHint = isAbnormal
+                    ? '<span class="ml-2 text-red-500 text-xs">▶ 點擊查看</span>'
+                    : '';
 
                 row.innerHTML = `
                     <td class="px-4 py-3 text-sm">${time}</td>
-                    <td class="px-4 py-3 text-sm font-semibold">${pointName}</td>
+                    <td class="px-4 py-3 text-sm font-semibold">${pointName}${abnormalBadge}</td>
                     <td class="px-4 py-3 text-sm">${record.inspectorName || '-'}</td>
-                    <td class="px-4 py-3 text-sm text-slate-500">${deviceInfo}</td>
+                    <td class="px-4 py-3 text-sm text-slate-500">${deviceInfo}${clickHint}</td>
                 `;
 
                 tbody.appendChild(row);
             });
+        }
+
+        // 開啟異常詳情 Modal
+        async function openAbnormalDetailModal(record) {
+            const modal = document.getElementById('abnormal-detail-modal');
+            const body = document.getElementById('abnormal-detail-body');
+            const subtitle = document.getElementById('detail-subtitle');
+
+            const pointName = pointsMap[record.pointId] || record.pointId;
+            const time = record.timestamp.toDate().toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short', hour12: false });
+            subtitle.textContent = `${pointName} ‧ ${record.inspectorName || '-'} ‧ ${time}`;
+            body.innerHTML = '<p class="text-slate-500 text-center py-4">正在載入...</p>';
+            modal.classList.remove('hidden');
+
+            try {
+                const recordDate = record.timestamp.toDate();
+                const dayStart = new Date(recordDate);
+                dayStart.setHours(0, 0, 0, 0);
+                const dayEnd = new Date(recordDate);
+                dayEnd.setHours(23, 59, 59, 999);
+
+                const q = query(
+                    collection(db, 'abnormal_reports'),
+                    where('pointId', '==', record.pointId),
+                    where('timestamp', '>=', Timestamp.fromDate(dayStart)),
+                    where('timestamp', '<=', Timestamp.fromDate(dayEnd))
+                );
+                const snapshot = await getDocs(q);
+
+                // 以 inspectorName 過濾
+                const reports = snapshot.docs
+                    .map(d => d.data())
+                    .filter(r => r.inspectorName === record.inspectorName);
+
+                if (reports.length === 0) {
+                    body.innerHTML = '<p class="text-slate-500 text-center py-4">查無對應的異常回報紀錄。</p>';
+                    return;
+                }
+
+                body.innerHTML = '';
+                reports.forEach(report => {
+                    const itemName = report.itemName || report.pointName || '---';
+                    const isResolved = report.status === 'resolved';
+                    const statusBadge = isResolved
+                        ? '<span class="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs font-semibold">已處理</span>'
+                        : '<span class="bg-red-100 text-red-800 px-2 py-0.5 rounded-full text-xs font-semibold">待處理</span>';
+                    const imageHTML = report.imageBase64
+                        ? `<img src="${report.imageBase64}" alt="異常照片" class="w-full max-w-sm h-auto rounded-md mt-3 border border-red-200 cursor-pointer hover:opacity-90" onclick="openPhotoModal('${report.imageBase64.substring(0, 50)}')" data-src="${report.imageBase64}">`
+                        : '';
+                    const resolutionHTML = isResolved && report.resolvedBy ? `
+                        <div class="mt-3 p-3 bg-green-50 rounded-md border border-green-200 text-sm">
+                            <p class="font-semibold text-green-800 mb-1">處理資訊</p>
+                            <p class="text-slate-600">處理人：${report.resolvedBy}</p>
+                            <p class="text-slate-600">處理說明：${report.resolution || '---'}</p>
+                        </div>` : '';
+
+                    const card = document.createElement('div');
+                    card.className = `bg-white rounded-lg border-l-4 ${isResolved ? 'border-green-400' : 'border-red-400'} shadow-sm p-4`;
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <p class="font-bold text-slate-800">${itemName}</p>
+                            ${statusBadge}
+                        </div>
+                        <p class="text-slate-700 bg-slate-50 p-2 rounded text-sm">${report.description || '---'}</p>
+                        ${imageHTML}
+                        ${resolutionHTML}
+                    `;
+                    // 點擊照片放大
+                    const img = card.querySelector('img[data-src]');
+                    if (img) {
+                        img.addEventListener('click', () => {
+                            document.getElementById('photo-modal-img').src = img.dataset.src;
+                            document.getElementById('photo-modal').classList.remove('hidden');
+                        });
+                    }
+                    body.appendChild(card);
+                });
+
+            } catch (error) {
+                console.error('載入異常詳情失敗:', error);
+                body.innerHTML = `<p class="text-red-500 text-center">載入失敗：${error.message}</p>`;
+            }
         }
 
         // 更新統計
@@ -348,6 +457,17 @@
         document.getElementById('photo-modal').addEventListener('click', (e) => {
             if (e.target.id === 'photo-modal') {
                 document.getElementById('photo-modal').classList.add('hidden');
+            }
+        });
+
+        // 關閉異常詳情 Modal
+        document.getElementById('close-abnormal-detail').addEventListener('click', () => {
+            document.getElementById('abnormal-detail-modal').classList.add('hidden');
+        });
+
+        document.getElementById('abnormal-detail-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'abnormal-detail-modal') {
+                document.getElementById('abnormal-detail-modal').classList.add('hidden');
             }
         });
     </script>
