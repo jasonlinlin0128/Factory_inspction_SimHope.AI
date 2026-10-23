@@ -2,7 +2,7 @@
   "name": "factory-inspection-functions",
   "description": "Firebase Cloud Functions for Factory Inspection System",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {
